@@ -11,33 +11,56 @@
   <h1 class="title">TAP THE COW</h1>
 
   <button id="cow" class="cow" aria-label="Tap the cow to moo">
-    <svg viewBox="0 0 300 260" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <!-- ears -->
-      <ellipse class="ear" cx="42"  cy="96" rx="34" ry="21" transform="rotate(-22 42 96)"/>
-      <ellipse class="ear" cx="258" cy="96" rx="34" ry="21" transform="rotate(22 258 96)"/>
-      <!-- horns -->
-      <path class="horn" d="M78 52 C60 22 84 8 100 26 C88 30 82 40 82 56 Z"/>
-      <path class="horn" d="M222 52 C240 22 216 8 200 26 C212 30 218 40 218 56 Z"/>
-      <!-- head -->
-      <ellipse class="head" cx="150" cy="132" rx="106" ry="98"/>
-      <!-- spots -->
-      <ellipse class="spot" cx="93"  cy="76"  rx="30" ry="24" transform="rotate(-18 93 76)"/>
-      <ellipse class="spot" cx="214" cy="92"  rx="24" ry="19" transform="rotate(24 214 92)"/>
-      <ellipse class="spot" cx="60"  cy="160" rx="17" ry="13"/>
-      <!-- eyes -->
-      <g class="eyes">
-        <ellipse class="eye-white" cx="108" cy="118" rx="21" ry="23"/>
-        <ellipse class="eye-white" cx="192" cy="118" rx="21" ry="23"/>
-        <circle class="pupil" cx="108" cy="122" r="10"/>
-        <circle class="pupil" cx="192" cy="122" r="10"/>
-        <circle class="glint" cx="112" cy="116" r="4"/>
-        <circle class="glint" cx="196" cy="116" r="4"/>
+    <svg viewBox="0 0 440 320" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <ellipse class="shadow" cx="240" cy="288" rx="162" ry="13"/>
+
+      <!-- tail -->
+      <path class="tail" d="M352 96 C390 104 398 158 381 196"/>
+      <ellipse class="tuft" cx="381" cy="206" rx="11" ry="15"/>
+
+      <!-- legs: all four sit behind the body so nothing crosses the belly -->
+      <g class="far">
+        <rect class="leg" x="202" y="146" width="25" height="132" rx="12"/>
+        <rect class="leg" x="322" y="146" width="25" height="132" rx="12"/>
+        <rect class="hoof" x="202" y="258" width="25" height="20" rx="8"/>
+        <rect class="hoof" x="322" y="258" width="25" height="20" rx="8"/>
       </g>
-      <!-- snout -->
-      <ellipse class="snout" cx="150" cy="188" rx="66" ry="50"/>
-      <ellipse class="nostril" cx="126" cy="178" rx="9" ry="12"/>
-      <ellipse class="nostril" cx="174" cy="178" rx="9" ry="12"/>
-      <path class="mouth" id="mouth" d="M118 208 Q150 224 182 208"/>
+      <rect class="leg" x="168" y="150" width="27" height="132" rx="13"/>
+      <rect class="leg" x="290" y="150" width="27" height="132" rx="13"/>
+      <rect class="hoof" x="168" y="262" width="27" height="20" rx="8"/>
+      <rect class="hoof" x="290" y="262" width="27" height="20" rx="8"/>
+
+      <!-- neck, then the body drawn over its shoulder end -->
+      <path class="hide" d="M120 68 C150 62 180 68 200 86 L196 150 C160 156 128 146 116 124 Z"/>
+      <ellipse class="hide" cx="250" cy="132" rx="105" ry="58"/>
+
+      <!-- spots -->
+      <ellipse class="spot" cx="225" cy="105" rx="33" ry="25" transform="rotate(-15 225 105)"/>
+      <ellipse class="spot" cx="308" cy="150" rx="26" ry="20" transform="rotate(20 308 150)"/>
+      <ellipse class="spot" cx="278" cy="88" rx="18" ry="12"/>
+
+      <!-- udder -->
+      <ellipse class="udder" cx="282" cy="178" rx="30" ry="20"/>
+      <circle class="teat" cx="268" cy="195" r="5"/>
+      <circle class="teat" cx="296" cy="195" r="5"/>
+
+      <!-- horn and ear tuck behind the head -->
+      <path class="horn" d="M88 58 C74 34 92 18 110 30 C96 38 90 46 88 58 Z"/>
+      <ellipse class="ear" cx="144" cy="54" rx="26" ry="13" transform="rotate(-42 144 54)"/>
+
+      <!-- head -->
+      <ellipse class="hide" cx="96" cy="92" rx="48" ry="40" transform="rotate(-20 96 92)"/>
+      <ellipse class="spot" cx="112" cy="68" rx="19" ry="14" transform="rotate(-20 112 68)"/>
+
+      <!-- muzzle -->
+      <ellipse class="snout" cx="52" cy="112" rx="30" ry="23" transform="rotate(-15 52 112)"/>
+      <ellipse class="nostril" cx="40" cy="104" rx="6" ry="8" transform="rotate(-15 40 104)"/>
+      <path class="mouth" id="mouth" d="M26 120 Q42 128 58 123"/>
+
+      <!-- eye -->
+      <ellipse class="eye-white" cx="92" cy="76" rx="14" ry="15"/>
+      <circle class="pupil" cx="90" cy="78" r="7"/>
+      <circle class="glint" cx="93" cy="73" r="3"/>
     </svg>
   </button>
 

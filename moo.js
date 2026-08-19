@@ -10,8 +10,8 @@
   var hint = document.getElementById("hint");
   var mouth = document.getElementById("mouth");
 
-  var MOUTH_CLOSED = "M118 208 Q150 224 182 208";
-  var MOUTH_OPEN   = "M112 196 Q150 252 188 196 Q150 212 112 196 Z";
+  var MOUTH_CLOSED = "M26 120 Q42 128 58 123";
+  var MOUTH_OPEN   = "M20 110 Q42 142 62 117 Q42 124 20 110 Z";
 
   var ctx = null;
   var master = null;

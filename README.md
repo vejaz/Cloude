@@ -1,11 +1,12 @@
 # Tap the Cow 🐄
 
-A one-page site with a cow in the middle. Tap it and it goes
+A one-page site with a whole cow standing side-on in the middle. Tap it
+and it goes
 **MOOOOOOWWWW** — loudly.
 
 ## Run it
 
-No build step, no dependencies. Open `index.html` in a browser, or serve
+No build step, no dependencies. Open  the page and the inline SVG cow in a browser, or serve
 the folder:
 
 ```sh
@@ -40,6 +41,6 @@ switch off if you hear nothing.
 
 | File | What it is |
 | --- | --- |
-| `index.html` | the page and the inline SVG cow |
+|  x |
 | `style.css` | layout, colours, the shake animation |
 | `moo.js` | the moo synthesiser and the tap handling |

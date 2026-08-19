@@ -27,7 +27,7 @@ body {
 }
 
 .cow {
-  width: min(72vw, 46vh);
+  width: min(94vw, 64vh);
   padding: 0;
   border: none;
   background: none;
@@ -51,8 +51,17 @@ body {
 }
 
 /* cow parts */
-.head       { fill: #fffdf7; stroke: #2b2b2b; stroke-width: 5; }
+.hide       { fill: #fffdf7; stroke: #2b2b2b; stroke-width: 5; stroke-linejoin: round; }
 .ear        { fill: #fffdf7; stroke: #2b2b2b; stroke-width: 5; }
+.leg        { fill: #fffdf7; stroke: #2b2b2b; stroke-width: 5; }
+.hoof       { fill: #33302c; stroke: #2b2b2b; stroke-width: 4; }
+.far .leg   { fill: #ded8cb; }
+.far .hoof  { fill: #25231f; }
+.tail       { fill: none; stroke: #2b2b2b; stroke-width: 8; stroke-linecap: round; }
+.tuft       { fill: #33302c; stroke: #2b2b2b; stroke-width: 4; }
+.udder      { fill: #ffc2cf; stroke: #2b2b2b; stroke-width: 5; }
+.teat       { fill: #e39aab; }
+.shadow     { fill: rgba(0, 0, 0, 0.18); }
 .horn       { fill: #f0dfb4; stroke: #2b2b2b; stroke-width: 5; stroke-linejoin: round; }
 .spot       { fill: #2f2a26; }
 .eye-white  { fill: #ffffff; stroke: #2b2b2b; stroke-width: 4; }
