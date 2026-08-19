@@ -14,7 +14,7 @@ body {
   font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   text-align: center;
   color: #fff;
-  background: radial-gradient(circle at 50% 30%, #8fd66a 0%, #56a83f 55%, #2f6d28 100%);
+  background: radial-gradient(circle at 50% 35%, #1c1c1c 0%, #0b0b0b 55%, #000 100%);
   overflow: hidden;
   user-select: none;
 }
@@ -34,7 +34,7 @@ body {
   cursor: pointer;
   touch-action: manipulation;
   transition: transform 0.08s ease-out;
-  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.8));
 }
 
 .cow svg { width: 100%; height: auto; display: block; }
@@ -57,11 +57,11 @@ body {
 .hoof       { fill: #33302c; stroke: #2b2b2b; stroke-width: 4; }
 .far .leg   { fill: #ded8cb; }
 .far .hoof  { fill: #25231f; }
-.tail       { fill: none; stroke: #2b2b2b; stroke-width: 8; stroke-linecap: round; }
-.tuft       { fill: #33302c; stroke: #2b2b2b; stroke-width: 4; }
+.tail       { fill: none; stroke: #fffdf7; stroke-width: 9; stroke-linecap: round; }
+.tuft       { fill: #33302c; stroke: #fffdf7; stroke-width: 4; }
 .udder      { fill: #ffc2cf; stroke: #2b2b2b; stroke-width: 5; }
 .teat       { fill: #e39aab; }
-.shadow     { fill: rgba(0, 0, 0, 0.18); }
+.shadow     { fill: rgba(255, 255, 255, 0.07); }
 .horn       { fill: #f0dfb4; stroke: #2b2b2b; stroke-width: 5; stroke-linejoin: round; }
 .spot       { fill: #2f2a26; }
 .eye-white  { fill: #ffffff; stroke: #2b2b2b; stroke-width: 4; }

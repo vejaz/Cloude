@@ -1,12 +1,11 @@
 # Tap the Cow 🐄
 
-A one-page site with a whole cow standing side-on in the middle. Tap it
-and it goes
-**MOOOOOOWWWW** — loudly.
+A one-page site with a whole cow standing side-on against black. Tap it
+and it goes **MOOOOOOWWWW** — loudly.
 
 ## Run it
 
-No build step, no dependencies. Open  the page and the inline SVG cow in a browser, or serve
+No build step, no dependencies. Open `index.html` in a browser, or serve
 the folder:
 
 ```sh
