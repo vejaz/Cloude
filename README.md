@@ -16,19 +16,29 @@ then visit http://localhost:8000
 
 ## How the moo works
 
-There is no audio file. `moo.js` synthesises the moo with the Web Audio API
-each time you tap:
+There is no audio file. `moo.js` synthesises the moo sample by sample on
+every tap, using source-filter synthesis — the model speech synthesisers
+use — rather than oscillators through a filter, which sound buzzy however
+you envelope them:
 
-- two detuned sawtooth oscillators plus a sub square for the chesty body
-- a pitch contour that rises into the "moo" and sags down for the "wwww"
-- vibrato that speeds up towards the end, so it warbles like an animal
-- a lowpass sweep that opens up like a mouth, plus bandpass formants for the
-  vowel and a little filtered noise for breath
-- a compressor into a soft clipper, which gets the level right up to the
-  ceiling (~-6 dBFS RMS, peaking at 0.95) without hard-clipping
+- **Source**: a Rosenberg glottal pulse train, the shape of the air pulse as
+  vocal folds swing open and slam shut. Its spectral roll-off is the part a
+  sawtooth gets wrong.
+- **Filter**: four resonators in series standing in for the vocal tract,
+  retuned ~1500 times a second so the mouth shuts for the "mmm", opens
+  through the "ooo" and closes again for the tail.
+- **Formants sized for a cow, not a person.** Formants scale inversely with
+  vocal tract length, and a cow's is roughly 40cm against a human's 17cm, so
+  the resonances sit about half as high as textbook vowel values. Human
+  formants on a low pitch just sound like someone imitating a cow.
+- **Jitter and shimmer** as a small random walk rather than an LFO.
+  Metronomic vibrato is the biggest giveaway of a synthetic voice; real ones
+  wander.
+- **Creak in the tail**: every other pulse weakens as the breath runs out.
+- Lip radiation as a derivative, then normalisation and gentle limiting.
 
-Each tap randomises the pitch and the number of O's, so no two moos are
-identical.
+Each tap re-renders with a fresh pitch, length and jitter, so no two moos
+are identical.
 
 ## Note on volume
 

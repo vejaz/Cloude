@@ -1,57 +1,199 @@
-/* Tap the cow -> a very loud "moooowwwwww".
-   Everything is synthesised with the Web Audio API, so there are no
-   audio files to download and it works offline. */
+/* Tap the cow -> a loud, reasonably natural moo.
+
+   The moo is synthesised from scratch on every tap, so there is no audio
+   file to load. It uses source-filter synthesis -- the model speech
+   synthesisers use -- rather than plain oscillators: a glottal pulse train
+   (the voice source) is shaped by a cascade of resonators (the vocal
+   tract). Oscillators through a filter sound buzzy however you envelope
+   them, because a sawtooth is not the shape a throat actually makes. */
 
 (function () {
   "use strict";
 
-  var cow  = document.getElementById("cow");
-  var moo  = document.getElementById("moo");
-  var hint = document.getElementById("hint");
+  var cow   = document.getElementById("cow");
+  var moo   = document.getElementById("moo");
+  var hint  = document.getElementById("hint");
   var mouth = document.getElementById("mouth");
 
   var MOUTH_CLOSED = "M26 120 Q42 128 58 123";
   var MOUTH_OPEN   = "M20 110 Q42 142 62 117 Q42 124 20 110 Z";
 
   var ctx = null;
-  var master = null;
   var busyUntil = 0;
 
-  /* ---------- audio graph ---------- */
+  /* ---------- the voice ---------- */
+
+  // Rosenberg glottal flow: the shape of the air pulse as the vocal folds
+  // swing open and slam shut. Its gentle spectral roll-off is exactly what
+  // a sawtooth gets wrong.
+  function glottalFlow(p, tp, tn) {
+    if (p < tp) return 0.5 * (1 - Math.cos(Math.PI * p / tp));
+    if (p < tp + tn) return Math.cos(Math.PI * (p - tp) / (2 * tn));
+    return 0;
+  }
+
+  // How the vocal tract moves across the call: mouth shut for the "mmm",
+  // wide open through the "ooo", closing again for the tail.
+  //
+  // These formants are far lower than the textbook vowel values, because
+  // those are human. Formants scale inversely with the length of the
+  // tract, and a cow's is roughly 40cm against our 17cm -- so its
+  // resonances land about half as high. Human formants on a low pitch
+  // just sound like a person imitating a cow.
+  // [position, F1, F2, F3, F4, openness]
+  var TRACT = [
+    [0.00, 210, 560, 1000, 1650, 0.00],
+    [0.14, 250, 620, 1060, 1700, 0.18],
+    [0.30, 430, 780, 1300, 1950, 1.00],
+    [0.60, 390, 740, 1250, 1900, 1.00],
+    [0.80, 320, 660, 1150, 1800, 0.70],
+    [1.00, 230, 570, 1020, 1650, 0.12]
+  ];
+
+  function tractAt(u, out) {
+    var i = 1;
+    while (i < TRACT.length - 1 && TRACT[i][0] < u) i++;
+    var a = TRACT[i - 1], b = TRACT[i];
+    var k = (u - a[0]) / (b[0] - a[0]);
+    if (k < 0) k = 0; else if (k > 1) k = 1;
+    for (var j = 1; j < 6; j++) out[j - 1] = a[j] + (b[j] - a[j]) * k;
+  }
+
+  // Pitch: a scoop up into the call, a long steady middle, and the falling
+  // "wwww" as the breath runs out.
+  function pitchAt(u, f0) {
+    var p;
+    if (u < 0.10)      p = 0.78 + (u / 0.10) * 0.24;
+    else if (u < 0.50) p = 1.02 + (u - 0.10) / 0.40 * 0.05;
+    else if (u < 0.74) p = 1.07 - (u - 0.50) / 0.24 * 0.07;
+    else               p = 1.00 - Math.pow((u - 0.74) / 0.26, 1.5) * 0.40;
+    return f0 * p;
+  }
+
+  function ampAt(u) {
+    if (u < 0.05) return (u / 0.05) * 0.40;
+    if (u < 0.20) return 0.40 + (u - 0.05) / 0.15 * 0.30;
+    if (u < 0.32) return 0.70 + (u - 0.20) / 0.12 * 0.30;
+    if (u < 0.70) return 1.00;
+    if (u < 0.88) return 1.00 - (u - 0.70) / 0.18 * 0.30;
+    return 0.70 * Math.pow(1 - (u - 0.88) / 0.12, 1.5);
+  }
+
+  function renderMoo(sr) {
+    var dur = 2.15 + Math.random() * 0.35;
+    var n = Math.floor(sr * dur);
+    var buf = new Float32Array(n);
+
+    var f0 = 132 * (0.92 + Math.random() * 0.17);   // a cow sits low
+    var tp = 0.40, tn = 0.16;                       // glottal pulse shape
+
+    var y1 = [0, 0, 0, 0], y2 = [0, 0, 0, 0];       // resonator state
+    var ca = [0, 0, 0, 0], cb = [0, 0, 0, 0], cc = [0, 0, 0, 0];
+    var bw = [0, 0, 0, 0];
+    var tract = [0, 0, 0, 0, 0];
+
+    var phase = 1, jitter = 0, shimmer = 1, alt = 1, prev = 0, lp = 0;
+    var i, f;
+
+    for (i = 0; i < n; i++) {
+      var u = i / n;
+
+      if ((i & 31) === 0) {            // retune the tract ~1500x a second
+        tractAt(u, tract);
+        bw[0] = 90 + (1 - tract[4]) * 90;
+        bw[1] = 130; bw[2] = 200; bw[3] = 280;
+        for (f = 0; f < 4; f++) {
+          var r = Math.exp(-Math.PI * bw[f] / sr);
+          var th = 2 * Math.PI * tract[f] / sr;
+          cb[f] = 2 * r * Math.cos(th);
+          cc[f] = -r * r;
+          ca[f] = 1 - cb[f] - cc[f];
+        }
+      }
+
+      // --- source ---
+      phase += pitchAt(u, f0) * (1 + jitter) / sr;
+      if (phase >= 1) {
+        phase -= 1;
+        // Jitter and shimmer as a small random walk, not a tidy LFO.
+        // Metronomic vibrato is the single biggest giveaway of a
+        // synthetic voice; real ones wander.
+        jitter = jitter * 0.82 + (Math.random() * 2 - 1) * 0.010;
+        shimmer = 1 + (Math.random() * 2 - 1) * 0.07;
+        alt = -alt;
+      }
+
+      var g = glottalFlow(phase, tp, tn) * shimmer;
+
+      // The call goes rough as the breath runs out: every other pulse
+      // weakens, which is the creak real animals trail off on.
+      var rough = u > 0.72 ? (u - 0.72) / 0.28 : 0;
+      if (alt < 0) g *= 1 - 0.22 * rough;
+
+      // Breath, escaping mostly while the folds are open.
+      var breath = (Math.random() * 2 - 1) *
+                   (0.010 + 0.020 * tract[4]) *
+                   (phase < tp + tn ? 1 : 0.35);
+
+      // --- vocal tract: four resonators in series ---
+      var x = g + breath;
+      for (f = 0; f < 4; f++) {
+        var y = ca[f] * x + cb[f] * y1[f] + cc[f] * y2[f];
+        y2[f] = y1[f]; y1[f] = y; x = y;
+      }
+
+      // Lips radiate the pressure derivative; a shut mouth muffles it.
+      var rad = x - prev;
+      prev = x;
+      var k2 = Math.exp(-2 * Math.PI * (350 + 2600 * tract[4]) / sr);
+      lp = rad * (1 - k2) + lp * k2;
+
+      buf[i] = lp * ampAt(u);
+    }
+
+    var peak = 0;
+    for (i = 0; i < n; i++) { var a2 = buf[i] < 0 ? -buf[i] : buf[i]; if (a2 > peak) peak = a2; }
+    if (peak > 0) { var norm = 0.99 / peak; for (i = 0; i < n; i++) buf[i] *= norm; }
+
+    return buf;
+  }
+
+  /* ---------- playback ---------- */
 
   function audio() {
     if (ctx) return ctx;
-
     var AC = window.AudioContext || window.webkitAudioContext;
     ctx = new AC();
 
-    // Squeeze the dynamics, then push hard: loud without nasty clipping.
+    // Gentle: the moo is already normalised, so this is here for level,
+    // not for crushing it. Heavy compression was what made the old one
+    // buzz.
     var comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -22;
-    comp.knee.value = 12;
-    comp.ratio.value = 12;
-    comp.attack.value = 0.003;
-    comp.release.value = 0.25;
+    comp.threshold.value = -12;
+    comp.knee.value = 20;
+    comp.ratio.value = 3;
+    comp.attack.value = 0.010;
+    comp.release.value = 0.30;
 
-    master = ctx.createGain();
-    master.gain.value = 2.4;          // makeup gain -> LOUD
+    var makeup = ctx.createGain();
+    makeup.gain.value = 1.25;
 
-    // Soft clipper: pushes the level right up to the ceiling and rounds off
-    // whatever pokes through, instead of letting it hard-clip into a buzzsaw.
+    // Rounds off anything that still pokes over, instead of letting it
+    // hard-clip.
     var shaper = ctx.createWaveShaper();
-    var n = 2048, curve = new Float32Array(n);
-    for (var i = 0; i < n; i++) {
-      var x = (i / (n - 1)) * 2 - 1;
-      curve[i] = Math.tanh(x * 1.6) / Math.tanh(1.6);
+    var m = 2048, curve = new Float32Array(m);
+    for (var i = 0; i < m; i++) {
+      var x = (i / (m - 1)) * 2 - 1;
+      curve[i] = Math.tanh(x * 1.05) / Math.tanh(1.05);
     }
     shaper.curve = curve;
     shaper.oversample = "4x";
 
     var out = ctx.createGain();
-    out.gain.value = 0.95;            // leave a sliver of headroom
+    out.gain.value = 0.96;
 
-    comp.connect(master);
-    master.connect(shaper);
+    comp.connect(makeup);
+    makeup.connect(shaper);
     shaper.connect(out);
     out.connect(ctx.destination);
 
@@ -59,121 +201,20 @@
     return ctx;
   }
 
-  // Short burst of noise for the breathy air in the moo.
-  function noiseBuffer(ac, seconds) {
-    var len = Math.floor(ac.sampleRate * seconds);
-    var buf = ac.createBuffer(1, len, ac.sampleRate);
-    var d = buf.getChannelData(0);
-    for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    return buf;
-  }
-
-  function formant(ac, freq, q, gain, dest) {
-    var f = ac.createBiquadFilter();
-    f.type = "bandpass";
-    f.frequency.value = freq;
-    f.Q.value = q;
-    var g = ac.createGain();
-    g.gain.value = gain;
-    f.connect(g);
-    g.connect(dest);
-    return { filter: f, gain: g };
-  }
-
-  /* ---------- the moo ---------- */
-
   function playMoo() {
     var ac = audio();
     if (ac.state === "suspended") ac.resume();
 
-    var t = ac.currentTime + 0.02;
-    var dur = 2.1;                              // moooooooowwwwww
-    var f0 = 118 + (Math.random() * 16 - 8);    // a little variation each tap
+    var data = renderMoo(ac.sampleRate);
+    var ab = ac.createBuffer(1, data.length, ac.sampleRate);
+    ab.getChannelData(0).set(data);
 
-    var voice = ac.createGain();                // overall envelope
-    voice.gain.setValueAtTime(0.0001, t);
-    voice.gain.exponentialRampToValueAtTime(0.55, t + 0.10);  // "mmm" swells in
-    voice.gain.setValueAtTime(0.55, t + 0.28);
-    voice.gain.linearRampToValueAtTime(1.0, t + 0.55);        // mouth opens: "OOO"
-    voice.gain.setValueAtTime(1.0, t + dur * 0.62);
-    voice.gain.linearRampToValueAtTime(0.72, t + dur * 0.85); // "wwww" tail
-    voice.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    var src = ac.createBufferSource();
+    src.buffer = ab;
+    src.connect(ac._in);
+    src.start();
 
-    // Vocal tract: opens up as the cow opens its mouth.
-    var tract = ac.createBiquadFilter();
-    tract.type = "lowpass";
-    tract.Q.value = 1.1;
-    tract.frequency.setValueAtTime(420, t);            // nasal, closed lips
-    tract.frequency.exponentialRampToValueAtTime(2400, t + 0.55);
-    tract.frequency.exponentialRampToValueAtTime(700, t + dur);
-
-    voice.connect(tract);
-
-    // Formants give it a throaty animal "ooo" instead of a flat buzz.
-    var fA = formant(ac, 520, 6, 1.0, ac._in);
-    var fB = formant(ac, 1050, 8, 0.55, ac._in);
-    var fC = formant(ac, 2400, 9, 0.22, ac._in);
-    tract.connect(fA.filter);
-    tract.connect(fB.filter);
-    tract.connect(fC.filter);
-    tract.connect(ac._in);                              // keep some raw body
-
-    fA.filter.frequency.setValueAtTime(430, t);
-    fA.filter.frequency.linearRampToValueAtTime(640, t + 0.6);
-    fA.filter.frequency.linearRampToValueAtTime(400, t + dur);
-
-    // Wobbly pitch contour: up into the moo, sagging down at the end.
-    function contour(param, mult) {
-      param.setValueAtTime(f0 * 0.80 * mult, t);
-      param.linearRampToValueAtTime(f0 * 1.14 * mult, t + 0.35);
-      param.linearRampToValueAtTime(f0 * 1.05 * mult, t + dur * 0.65);
-      param.linearRampToValueAtTime(f0 * 0.62 * mult, t + dur);      // wwwww
-    }
-
-    // Two detuned saws + a sub sine = big chesty cow.
-    var oscs = [];
-    [["sawtooth", 1, 0.5], ["sawtooth", 1.006, 0.35], ["square", 0.5, 0.4]]
-      .forEach(function (spec) {
-        var o = ac.createOscillator();
-        o.type = spec[0];
-        contour(o.frequency, spec[1]);
-        var g = ac.createGain();
-        g.gain.value = spec[2];
-        o.connect(g);
-        g.connect(voice);
-        o.start(t);
-        o.stop(t + dur + 0.1);
-        oscs.push(o);
-      });
-
-    // Vibrato — the warble that makes it read as an animal.
-    var lfo = ac.createOscillator();
-    lfo.frequency.setValueAtTime(4.5, t);
-    lfo.frequency.linearRampToValueAtTime(7.5, t + dur);
-    var lfoGain = ac.createGain();
-    lfoGain.gain.setValueAtTime(1.5, t);
-    lfoGain.gain.linearRampToValueAtTime(7, t + dur);
-    lfo.connect(lfoGain);
-    oscs.forEach(function (o) { lfoGain.connect(o.frequency); });
-    lfo.start(t);
-    lfo.stop(t + dur + 0.1);
-
-    // Breath.
-    var noise = ac.createBufferSource();
-    noise.buffer = noiseBuffer(ac, dur + 0.1);
-    var nf = ac.createBiquadFilter();
-    nf.type = "bandpass";
-    nf.frequency.value = 1100;
-    nf.Q.value = 0.8;
-    var ng = ac.createGain();
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.linearRampToValueAtTime(0.09, t + 0.5);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    noise.connect(nf); nf.connect(ng); ng.connect(voice);
-    noise.start(t);
-    noise.stop(t + dur + 0.1);
-
-    return dur;
+    return data.length / ac.sampleRate;
   }
 
   /* ---------- interaction ---------- */
@@ -186,7 +227,7 @@
     try {
       dur = playMoo();
     } catch (e) {
-      dur = 2.1;                      // no audio? still do the animation
+      dur = 2.3;                      // no audio? still do the animation
     }
     busyUntil = now + 350;
 
@@ -216,8 +257,6 @@
     moooo();
   }, { passive: false });
 
-  // Space / Enter for keyboard users (the button fires click already,
-  // this just stops the page from scrolling on space).
   cow.addEventListener("keydown", function (e) {
     if (e.key === " " || e.key === "Spacebar") e.preventDefault();
   });
