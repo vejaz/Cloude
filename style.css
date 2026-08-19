@@ -1,0 +1,99 @@
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 2vh, 20px);
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+  color: #fff;
+  background: radial-gradient(circle at 50% 30%, #8fd66a 0%, #56a83f 55%, #2f6d28 100%);
+  overflow: hidden;
+  user-select: none;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(1.5rem, 7vw, 3rem);
+  letter-spacing: 0.12em;
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+}
+
+.cow {
+  width: min(72vw, 46vh);
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.08s ease-out;
+  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.35));
+}
+
+.cow svg { width: 100%; height: auto; display: block; }
+
+.cow:active { transform: scale(0.94); }
+
+/* wobble while mooing */
+.cow.mooing { animation: shake 0.16s linear infinite; }
+
+@keyframes shake {
+  0%   { transform: scale(1.06) rotate(-2.5deg); }
+  50%  { transform: scale(1.09) rotate(2.5deg); }
+  100% { transform: scale(1.06) rotate(-2.5deg); }
+}
+
+/* cow parts */
+.head       { fill: #fffdf7; stroke: #2b2b2b; stroke-width: 5; }
+.ear        { fill: #fffdf7; stroke: #2b2b2b; stroke-width: 5; }
+.horn       { fill: #f0dfb4; stroke: #2b2b2b; stroke-width: 5; stroke-linejoin: round; }
+.spot       { fill: #2f2a26; }
+.eye-white  { fill: #ffffff; stroke: #2b2b2b; stroke-width: 4; }
+.pupil      { fill: #241f1c; }
+.glint      { fill: #ffffff; }
+.snout      { fill: #ffc2cf; stroke: #2b2b2b; stroke-width: 5; }
+.nostril    { fill: #d1748c; }
+.mouth      { fill: none; stroke: #b45a72; stroke-width: 6; stroke-linecap: round;
+              stroke-linejoin: round; }
+.mouth.open { fill: #8f3350; stroke: #6d2740; }
+
+.hint {
+  margin: 0;
+  font-size: clamp(0.95rem, 4vw, 1.4rem);
+  opacity: 0.9;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+.moo {
+  margin: 0;
+  min-height: 1.4em;
+  max-width: 94vw;
+  overflow-wrap: anywhere;
+  line-height: 1.1;
+  font-size: clamp(1rem, 4.2vw, 2rem);
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+  opacity: 0;
+}
+
+.moo.show { animation: pop 1.6s ease-out; }
+
+@keyframes pop {
+  0%   { opacity: 0; transform: scale(0.6); }
+  15%  { opacity: 1; transform: scale(1.15); }
+  70%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cow.mooing { animation: none; }
+  .moo.show { animation: none; opacity: 1; }
+}

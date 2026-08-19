@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TAP THE COW</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐄</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1 class="title">TAP THE COW</h1>
+
+  <button id="cow" class="cow" aria-label="Tap the cow to moo">
+    <svg viewBox="0 0 300 260" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <!-- ears -->
+      <ellipse class="ear" cx="42"  cy="96" rx="34" ry="21" transform="rotate(-22 42 96)"/>
+      <ellipse class="ear" cx="258" cy="96" rx="34" ry="21" transform="rotate(22 258 96)"/>
+      <!-- horns -->
+      <path class="horn" d="M78 52 C60 22 84 8 100 26 C88 30 82 40 82 56 Z"/>
+      <path class="horn" d="M222 52 C240 22 216 8 200 26 C212 30 218 40 218 56 Z"/>
+      <!-- head -->
+      <ellipse class="head" cx="150" cy="132" rx="106" ry="98"/>
+      <!-- spots -->
+      <ellipse class="spot" cx="93"  cy="76"  rx="30" ry="24" transform="rotate(-18 93 76)"/>
+      <ellipse class="spot" cx="214" cy="92"  rx="24" ry="19" transform="rotate(24 214 92)"/>
+      <ellipse class="spot" cx="60"  cy="160" rx="17" ry="13"/>
+      <!-- eyes -->
+      <g class="eyes">
+        <ellipse class="eye-white" cx="108" cy="118" rx="21" ry="23"/>
+        <ellipse class="eye-white" cx="192" cy="118" rx="21" ry="23"/>
+        <circle class="pupil" cx="108" cy="122" r="10"/>
+        <circle class="pupil" cx="192" cy="122" r="10"/>
+        <circle class="glint" cx="112" cy="116" r="4"/>
+        <circle class="glint" cx="196" cy="116" r="4"/>
+      </g>
+      <!-- snout -->
+      <ellipse class="snout" cx="150" cy="188" rx="66" ry="50"/>
+      <ellipse class="nostril" cx="126" cy="178" rx="9" ry="12"/>
+      <ellipse class="nostril" cx="174" cy="178" rx="9" ry="12"/>
+      <path class="mouth" id="mouth" d="M118 208 Q150 224 182 208"/>
+    </svg>
+  </button>
+
+  <p class="hint" id="hint">tap it 👆</p>
+  <p class="moo" id="moo" aria-live="polite"></p>
+
+  <script src="moo.js"></script>
+</body>
+</html>
