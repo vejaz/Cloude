@@ -5,7 +5,7 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-220542.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-223230.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
@@ -34,6 +34,21 @@ To go back, delete that one jar. Your older builds are untouched.
   longer allocate. A picture that is no longer wanted (you zoomed or turned again) is dropped at once instead of being finished first.
 - **Test coordinates window fixed.** Closing it with the X used to only hide it, so pressing the button again did nothing. It now
   opens every time (checked by `ReverseReopenTest`, which fails without the fix).
+- **Every structure the seed places can be searched, exactly.** Ruined portals, desert pyramids, jungle temples, igloos, swamp huts,
+  shipwrecks, ocean ruins and monuments, woodland mansions, pillager outposts, trail ruins, trial chambers and buried treasure are
+  now placed from the seed with the game's own rule: the world is cut into regions, one chunk of each is picked by a random
+  generator started from the seed, the region and a number per structure, and it only gets the structure if its biome allows it.
+  The spacing, the numbers and the allowed biomes were read from Minecraft 1.21.11's own data files (not remembered), and the
+  biome is checked against your biome map. A result is an exact position, like the village list. (Not placeable from a map:
+  strongholds, mineshafts, dungeons, geodes, and ancient cities, which need the underground biome.)
+- **A clear proof that the exact map is your world.** When the exact world is made the card checks it against two things the game
+  wrote itself and says the result in one line: "Exact: 97% of 400 points of your biome map agree with these real chunks, and 3 of 3
+  calculated structures were found where the seed puts them", "Mostly exact", or a red "Does not match" (then the seed or the
+  Minecraft version of your biome map differs from 1.21.11 and seed N, and the exact map would not look like your world). It also
+  lists the structures that really start in the area, with their coordinates.
+- **Choose how much to recognise.** The card has Small / Normal / Wide / Huge (about 100 / 160 / 320 / 640 blocks across) next to
+  the button; bigger shows more of the surroundings to recognise the place and takes longer. "Make it bigger or again" regenerates
+  with the size you picked.
 - **3D view: zoom to the pointer, pins that stay put, click to stand there.** The wheel zooms toward whatever is under the pointer
   (3D, standing and top-down). Pins, names and village dots are placed with the same camera as the picture on screen, so they no
   longer slide around while you drag and the picture catches up. Click a pin or a village dot (the pointer turns into a hand) and
@@ -127,10 +142,9 @@ To go back, delete that one jar. Your older builds are untouched.
 
 - **The pictures are painted illustrations, not game screenshots.** There are no game assets in the app, so each is drawn in
   code in a block style.
-- **Structures need a position list to be exact.** Only `villages.txt` exists on your machine today. For other structures the
-  tab searches the biomes they generate in and labels the result "by biome". Structures that appear everywhere underground
-  (mineshaft, stronghold, trial chambers, dungeons, geodes) cannot be placed from a biome map, and it says so.
-  If you generate `<structure>s.txt` files in the same format as `villages.txt` they are used automatically.
+- **Structure positions.** A `villages.txt`-style list on your machine is used when there is one. Otherwise the positions are
+  worked out from your seed with the game's own placement rules (see the latest update). Strongholds, mineshafts, dungeons and
+  geodes cannot be placed from a biome map, and it says so.
 - Nether and End biomes are recognised if typed, but your map covers the overworld only, so they are reported rather than searched.
 - Built and tested here on a made-up biome map, not your seed. The real `biome-grid-64.bin` is read by the same code as before.
 - **The exact world was tested against a made-up world written in the game's own file format and a stand-in for the server.** The step
@@ -146,5 +160,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (1,056 checks), `World3DTest` (227), `ReverseReopenTest` (15), `ViewTest` (34), `ExactTest` (66: reads a made-up world written in the game's file format, and runs a stand-in for the game's server), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (1,376 checks), `World3DTest` (227), `ReverseReopenTest` (15), `ViewTest` (34), `ExactTest` (74: reads a made-up world written in the game's file format, and runs a stand-in for the game's server), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

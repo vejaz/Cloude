@@ -54,7 +54,7 @@ final class MapWindow extends JFrame {
         world = new Terrain(Terrain.ofGrid(grid), 7);
         List<Terrain.Site> sites = new ArrayList<>();
         for (Lexicon.Item it : Lexicon.items()) {
-            if (!it.structure() || it.pointsFrom != null || !PlaceSearch.hasPoints(it.id)) continue;
+            if (!it.structure() || it.pointsFrom != null || !PlaceSearch.hasPoints(it.id) || it.id.equals("trial_chambers") || it.id.equals("buried_treasure")) continue;
             for (int[] p : PlaceSearch.listedPoints(it.id, grid)) {
                 if (Math.abs(p[0] - x) > 14000 || Math.abs(p[1] - z) > 14000) continue;
                 Terrain.Site s = new Terrain.Site(p[0], p[1], it.id);

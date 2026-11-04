@@ -306,7 +306,7 @@ public final class ReaderTest {
         check(r.canSearch() && r.target().label().equals("Plains"), "overworld target survives an unsearchable extra");
         r = Reader.read("desert pyramid", grid);
         System.out.println(describe(r));
-        check(r.canSearch() && r.target().approximate && r.target().biomes.contains("desert"), "desert pyramid searched by its biome");
+        check(r.canSearch() && !r.target().approximate && r.target().structures.contains("desert_pyramid"), "desert pyramid is now placed exactly from the seed, not guessed from its biome");
         r = Reader.read("mineshaft", grid);
         check(!r.canSearch(), "mineshaft cannot be placed");
 
@@ -419,6 +419,46 @@ public final class ReaderTest {
             check(good >= tries / 4, "at least a quarter of the spots could be pinned to one place, got " + good);
             Reverse.Report off = Reverse.describe(grid, 90000, 90000, 20000, null, null);
             check(!off.ok && !off.note.isEmpty(), "coordinates off the map are refused politely");
+        }
+
+        // --- structures placed from the seed (ruined portals and the rest)
+        {
+            check(PlaceSearch.hasPoints("ruined_portal") && PlaceSearch.hasPoints("desert_pyramid") && PlaceSearch.hasPoints("woodland_mansion") && PlaceSearch.hasPoints("ocean_monument"), "ruined portal and the other random-spread structures can be searched");
+            Reader.Reading rp = Reader.read("ruined portal next to a river", grid);
+            Reader.Claim rc = find(rp, "Ruined Portal");
+            check(rc != null && rc.searchable() && rc.structures.contains("ruined_portal") && !rc.approximate && rc.role == Reader.Role.TARGET, "a ruined portal is searchable and exact: " + describe(rp));
+            PlaceSearch.Result rr = PlaceSearch.run(grid, rp.searchable(), 20000, null);
+            check(!rr.regions.isEmpty(), "ruined portals next to a river are found (" + rr.regions.size() + ")");
+            for (PlaceSearch.Region g : rr.regions) { check(g.exact, "a ruined portal result is an exact position"); if (!g.exact) break; }
+            for (StructureSeeds.Spec sp : StructureSeeds.all()) {
+                int[][] pos = StructureSeeds.positions(sp.id, grid);
+                int[][] again = StructureSeeds.compute(sp, grid.seed, grid);
+                check(pos != null && Arrays.deepEquals(pos, again), sp.id + ": the same seed gives the same positions");
+                check(!Arrays.deepEquals(pos, StructureSeeds.compute(sp, grid.seed + 1, grid)) || pos.length == 0, sp.id + ": another seed gives other positions");
+                java.util.Set<String> ok = new java.util.HashSet<>(Arrays.asList(sp.biomes));
+                String[] ids = PlaceSearch.idsOf(grid);
+                int bad = 0;
+                for (int[] q : pos) {
+                    int cx = Math.floorDiv(q[0] - sp.offset, 16), cz = Math.floorDiv(q[1] - sp.offset, 16);
+                    int[] chosen = sp.spacing == 1 ? new int[]{cx, cz} : StructureSeeds.chunkInRegion(sp, grid.seed, Math.floorDiv(cx, sp.spacing), Math.floorDiv(cz, sp.spacing));
+                    int off = sp.spacing == 1 ? 0 : Math.max(0, cx - Math.floorDiv(cx, sp.spacing) * sp.spacing);
+                    int bio = grid.at(grid.col(q[0]), grid.col(q[1]));
+                    if (chosen[0] != cx || chosen[1] != cz || off > sp.spacing - sp.separation - 1 + (sp.triangular ? 0 : 0) || bio < 0 || !ok.contains(ids[bio])) bad++;
+                }
+                check(bad == 0, sp.id + ": every position is its region's chosen chunk, inside the allowed spread, in an allowed biome (" + bad + " bad of " + pos.length + ")");
+            }
+            // outposts keep away from villages
+            Reader.Reading op = Reader.read("pillager outpost", grid);
+            int[][] outs = StructureSeeds.positions("pillager_outpost", grid);
+            int tooClose = 0;
+            for (int[] q : outs) {
+                int cx = Math.floorDiv(q[0], 16), cz = Math.floorDiv(q[1], 16);
+                for (int[] v : StructureSeeds.potentialStarts("village", grid.seed, cx - 10, cz - 10, cx + 10, cz + 10)) if (Math.abs(v[0] - cx) <= 10 && Math.abs(v[1] - cz) <= 10) { tooClose++; break; }
+            }
+            check(tooClose == 0, "no outpost within 10 chunks of a village (" + tooClose + " too close of " + outs.length + ")");
+            // an outpost is one chunk in five of the chosen ones, and buried treasure one in a hundred beach chunks
+            int[][] sampleAll = StructureSeeds.potentialStarts("pillager_outpost", grid.seed, -625, -625, 625, 625).stream().toArray(int[][]::new);
+            check(sampleAll.length > 0, "outposts exist in a wide area (" + sampleAll.length + ")");
         }
 
         System.out.println(checks + " checks, " + fails + " failed");

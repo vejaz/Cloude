@@ -47,18 +47,23 @@ final class ExactJob {
     }
 
     /** Opens the copy on disk, or makes one. Runs in the background and reports on the listener from that thread. */
-    void start(long seed, int x, int z, Listener l) {
+    void start(long seed, int x, int z, Listener l) { start(seed, x, z, false, l); }
+
+    /** {@code cachedOnly}: open a copy that is already on disk, and never start the game's server. */
+    void start(long seed, int x, int z, boolean cachedOnly, Listener l) {
         cancelled = false;
-        thread = new Thread(() -> run(seed, x, z, l), "exact-world");
+        thread = new Thread(() -> run(seed, x, z, cachedOnly, l), "exact-world");
         thread.setDaemon(true);
         thread.start();
     }
 
-    private void run(long seed, int x, int z, Listener l) {
+    private void run(long seed, int x, int z, boolean cachedOnly, Listener l) {
         try {
             int r = radius();
-            ExactPlace have = stored(seed, x, z, Math.min(r, 64));
+            // a copy that is big enough for what was asked for; opening quietly takes any copy that holds the area around the spot
+            ExactPlace have = stored(seed, x, z, cachedOnly ? Math.min(r, 64) : r);
             if (have != null) { l.done(have, true); return; }
+            if (cachedOnly) { l.failed("There is no saved copy of this spot.", true); return; }
             if (Runtime.version().feature() < 21) { l.failed("The game's server needs Java 21 or newer, and this app is running on Java " + Runtime.version().feature() + ".", false); return; }
 
             int cx0 = Math.floorDiv(x - r, 16), cz0 = Math.floorDiv(z - r, 16), cx1 = Math.floorDiv(x + r, 16), cz1 = Math.floorDiv(z + r, 16);

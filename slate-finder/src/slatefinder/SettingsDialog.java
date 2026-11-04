@@ -100,11 +100,11 @@ final class SettingsDialog extends JDialog {
         in5.add(Box.createVerticalStrut(6));
         in5.add(Theme.label("How much around the marked spot is made exact", Theme.UI, Theme.MUTED));
         in5.add(Box.createVerticalStrut(8));
-        int[] radii = {48, 80, 160};
+        int[] radii = ExactCard.SIZES;
         int ri = 1;
         for (int i = 0; i < radii.length; i++) if (Math.abs(radii[i] - ExactJob.radius()) < Math.abs(radii[ri] - ExactJob.radius())) ri = i;
-        in5.add(new Ui.Seg(new String[]{"Small", "Normal", "Large"}, ri, i -> Settings.set("exactSize", radii[i])));
-        JLabel rn = new JLabel("<html><body style='width:300px'>Only the part around the marked spot is generated. Small is about 100 blocks across, Normal about 160, Large about 320. Smaller is quicker and uses less disk.</body></html>");
+        in5.add(new Ui.Seg(new String[]{"Small", "Normal", "Wide", "Huge"}, ri, i -> Settings.set("exactSize", radii[i])));
+        JLabel rn = new JLabel("<html><body style='width:300px'>Only the part around the marked spot is generated. Small is about 100 blocks across, Normal about 160, Wide about 320, Huge about 640. Bigger shows more of the surroundings to recognise the place, and takes longer and more disk. You can also choose it in the map window.</body></html>");
         rn.setFont(Theme.SMALL);
         rn.setForeground(Theme.DIM);
         rn.setAlignmentX(Component.LEFT_ALIGNMENT);

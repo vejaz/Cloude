@@ -56,7 +56,25 @@ public final class PlaceSearch {
 
     /** True if a position list exists for this structure (variants such as "desert village" use their parent's list). */
     public static boolean hasPoints(String kind) {
-        try { return Landmarks.fileFor(listKind(kind)).isFile(); } catch (RuntimeException e) { return false; }
+        try { return Landmarks.fileFor(listKind(kind)).isFile() || StructureSeeds.supports(listKind(kind)); } catch (RuntimeException e) { return false; }
+    }
+
+    private static final Map<String, Points> COMPUTED = new HashMap<>();
+
+    /** Positions worked out from the seed (the game's own structure placement), for structures with no list on disk. */
+    private static synchronized Points computedList(String kind, BiomeGrid grid) {
+        if (grid == null || !StructureSeeds.supports(kind)) return null;
+        String key = kind + "@" + grid.seed + "@" + System.identityHashCode(grid);
+        Points p = COMPUTED.get(key);
+        if (p != null) return p;
+        int[][] pos = StructureSeeds.positions(kind, grid);
+        p = new Points();
+        p.modified = grid.seed;
+        p.xs = new int[pos.length];
+        p.zs = new int[pos.length];
+        for (int i = 0; i < pos.length; i++) { p.xs[i] = pos[i][0]; p.zs[i] = pos[i][1]; }
+        COMPUTED.put(key, p);
+        return p;
     }
 
     private static String listKind(String kind) {
@@ -71,6 +89,7 @@ public final class PlaceSearch {
     private static synchronized Points points(String kind, BiomeGrid grid) {
         Lexicon.Item it = Lexicon.byId(kind);
         Points base = loadList(listKind(kind));
+        if (base == null) base = computedList(listKind(kind), grid);
         if (base == null || it == null || it.pointsFrom == null || it.habitat == null || grid == null) return base;
         String key = kind + "@" + System.identityHashCode(grid) + "@" + base.modified;
         Points cut = VARIANTS.get(key);

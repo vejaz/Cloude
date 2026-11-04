@@ -17,6 +17,8 @@ public final class ExactTestWorld {
     public interface Fn {
         String block(int x, int y, int z);
         String biome(int x, int y, int z);
+        /** The game's names for the structures that start in this chunk. */
+        default String[] starts(int cx, int cz) { return new String[0]; }
     }
 
     // ------------------------------------------------------------------ the world
@@ -187,6 +189,20 @@ public final class ExactTestWorld {
             w.bytes("SkyLight", new byte[2048]);
             w.end();
         }
+        w.compoundStart("structures");
+        w.compoundStart("starts");
+        for (String id : fn.starts(cx, cz)) {
+            w.compoundStart(id);
+            w.str("id", id);
+            w.i32("ChunkX", cx); w.i32("ChunkZ", cz);
+            w.listStart("Children", 10, 0);
+            w.end();
+        }
+        // what the game also writes: a start that belongs to another chunk, and one that did not happen
+        w.compoundStart("minecraft:village"); w.str("id", "minecraft:village"); w.i32("ChunkX", cx + 1); w.i32("ChunkZ", cz); w.end();
+        w.compoundStart("minecraft:mineshaft"); w.str("id", "INVALID"); w.end();
+        w.end();
+        w.end();
         w.compoundStart("Heightmaps");
         w.longs("WORLD_SURFACE", new long[37]);
         w.end();

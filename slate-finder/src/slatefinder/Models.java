@@ -432,8 +432,21 @@ final class Models {
             case "desert_well": return desertWell();
             case "trail_ruins": return trailRuins();
             case "fossil": return fossil();
+            case "ruined_portal": return ruinedPortal();
             default: return well(Style.PLAINS);
         }
+    }
+
+    /** A broken portal frame of obsidian, with crying obsidian and netherrack around it. */
+    static Stamp ruinedPortal() {
+        return cached("ruinedPortal", () -> {
+            Stamp s = new Stamp(7, 5, 6, 3, 2);
+            for (int x = 0; x < 7; x++) for (int z = 0; z < 5; z++) if ((x * 7 + z * 3) % 5 < 3) s.set(x, 0, z, Blocks3D.DEEPSLATE);
+            s.box(2, 1, 2, 2, 4, 2, Blocks3D.OBSIDIAN); s.box(5, 1, 2, 5, 3, 2, Blocks3D.OBSIDIAN);
+            s.box(3, 4, 2, 4, 4, 2, Blocks3D.OBSIDIAN); s.set(5, 4, 2, Blocks3D.SCULK);
+            s.set(3, 1, 2, Blocks3D.OBSIDIAN); s.set(1, 1, 3, Blocks3D.SCULK); s.set(4, 1, 3, Blocks3D.SCULK); s.set(6, 1, 1, Blocks3D.GOLD);
+            return s;
+        });
     }
 
     /** A clump of coral on the sea floor. */

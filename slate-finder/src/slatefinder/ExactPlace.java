@@ -24,7 +24,7 @@ import java.util.zip.GZIPOutputStream;
  * compact file so the big world files can be deleted, and it plugs into {@link Terrain} so the 3D views draw it.
  */
 final class ExactPlace implements Terrain.ExactSource {
-    static final int VERSION = 1;
+    static final int VERSION = 2;
     static final int SEA_BLOCK = 62;          // the highest block of the sea (the water surface is at 63)
 
     final long seed;
@@ -44,6 +44,26 @@ final class ExactPlace implements Terrain.ExactSource {
         byte flags;
         int stack = -1;
         short gy;
+    }
+
+    /** A structure that starts in this area, as the game recorded it in the chunk: its game name and the chunk it starts in. */
+    static final class Start {
+        final String id;
+        final int cx, cz;
+        Start(String id, int cx, int cz) { this.id = id; this.cx = cx; this.cz = cz; }
+    }
+
+    final List<Start> starts = new ArrayList<>();
+
+    /** The game's name for the biome of the column at (x, z), without "minecraft:", or null outside the place. */
+    String biomeAt(int x, int z) {
+        int cx = Math.floorDiv(x, 16), cz = Math.floorDiv(z, 16);
+        int ix = cx - cx0, iz = cz - cz0;
+        if (ix < 0 || iz < 0 || ix >= cw || iz >= cd) return null;
+        Col[] ch = cols[iz * cw + ix];
+        if (ch == null) return null;
+        String n = biomes.get(ch[Math.floorMod(z, 16) * 16 + Math.floorMod(x, 16)].biome);
+        return n.startsWith("minecraft:") ? n.substring(10) : n;
     }
 
     final Col[][] cols;                       // per chunk, 256 columns (null: chunk not available)
@@ -121,12 +141,30 @@ final class ExactPlace implements Terrain.ExactSource {
             Map<String, Object> ch = r.chunk(Math.floorMod(cx, 32), Math.floorMod(cz, 32));
             if (ch != null) {
                 String st = Nbt.str(ch.get("Status"));
-                if (st == null || st.endsWith("full")) pl.cols[(cz - cz0) * cw + (cx - cx0)] = pl.columns(ch);
+                if (st == null || st.endsWith("full")) {
+                    pl.cols[(cz - cz0) * cw + (cx - cx0)] = pl.columns(ch);
+                    pl.collectStarts(ch, cx, cz);
+                }
             }
             done++;
             if (p != null && (done & 31) == 0) p.update(done / (double) total, "Reading the world…  " + done + " of " + total + " chunks");
         }
         return pl;
+    }
+
+    /** The structures that start in this chunk (the game records them in every chunk they touch; only the start chunk counts). */
+    private void collectStarts(Map<String, Object> chunk, int cx, int cz) {
+        Map<String, Object> structures = Nbt.map(chunk.get("structures"));
+        Map<String, Object> st = structures == null ? null : Nbt.map(structures.get("starts"));
+        if (st == null) return;
+        for (Map.Entry<String, Object> e : st.entrySet()) {
+            Map<String, Object> v = Nbt.map(e.getValue());
+            if (v == null) continue;
+            String id = Nbt.str(v.get("id"));
+            if (id == null || id.equals("INVALID")) continue;
+            if (Nbt.num(v.get("ChunkX"), cx) != cx || Nbt.num(v.get("ChunkZ"), cz) != cz) continue;
+            starts.add(new Start(id, cx, cz));
+        }
     }
 
     private static final int MIN_Y = -64, MAX_Y = 319, SECTIONS = 24;
@@ -304,6 +342,8 @@ final class ExactPlace implements Terrain.ExactSource {
             for (String s : biomes) out.writeUTF(s);
             out.writeInt(stacks.size());
             for (short[] st : stacks) { out.writeShort(st.length); for (short v : st) out.writeShort(v); }
+            out.writeInt(starts.size());
+            for (Start t : starts) { out.writeUTF(t.id); out.writeInt(t.cx); out.writeInt(t.cz); }
             for (Col[] ch : cols) {
                 out.writeBoolean(ch != null);
                 if (ch == null) continue;
@@ -338,6 +378,8 @@ final class ExactPlace implements Terrain.ExactSource {
                 pl.stacks.add(st);
                 pl.stackIndex.put(Arrays.toString(st), i);
             }
+            int nst = in.readInt();
+            for (int i = 0; i < nst; i++) pl.starts.add(new Start(in.readUTF(), in.readInt(), in.readInt()));
             for (int ci = 0; ci < pl.cols.length; ci++) {
                 if (!in.readBoolean()) continue;
                 Col[] ch = new Col[256];

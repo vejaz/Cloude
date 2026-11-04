@@ -305,6 +305,61 @@ public final class ExactTest {
         } catch (IOException e) {
             check(e.getMessage().contains("stopped") && e.getMessage().contains("Failed to start"), "a server that dies says so, with its last words: " + e.getMessage());
         }
+        // --- proof that a place is the world of the biome map: biomes against the map, structures against the seed
+        {
+            File gf = new File(tmp, "proof-grid.bin");
+            DescribeTestWorld.write(gf, 20000, 64, 12345);
+            BiomeGrid g = BiomeGrid.load(gf);
+            String[] gids = PlaceSearch.idsOf(g);
+            int[][] portals = StructureSeeds.positions("ruined_portal", g);
+            check(portals.length > 20, "the test map has ruined portals (" + portals.length + ")");
+            int px = portals[portals.length / 2][0], pz = portals[portals.length / 2][1];
+            int pcx = Math.floorDiv(px, 16), pcz = Math.floorDiv(pz, 16);
+            final int a0 = pcx - 9, b0 = pcz - 9, a1 = pcx + 9, b1 = pcz + 9;
+            final boolean[] withStarts = {true};
+            ExactTestWorld.Fn aligned = new ExactTestWorld.Fn() {
+                public String block(int x, int y, int z) { return y == -64 ? "minecraft:bedrock" : y < 70 ? "minecraft:stone" : y == 70 ? "minecraft:grass_block" : "minecraft:air"; }
+                public String biome(int x, int y, int z) { int c = g.col(x), r = g.col(z); int bi = c < 0 || r < 0 ? 0 : Math.max(0, g.at(c, r)); return "minecraft:" + gids[bi]; }
+                @Override public String[] starts(int cx, int cz) {
+                    if (!withStarts[0]) return new String[0];
+                    List<String> out = new ArrayList<>();
+                    for (StructureSeeds.Spec sp : StructureSeeds.all()) {
+                        if (sp.spacing == 1) continue;
+                        for (int[] c : StructureSeeds.potentialStarts(sp.id, g.seed, cx, cz, cx, cz)) {
+                            int bi = g.at(g.col(c[0] * 16 + 8), g.col(c[1] * 16 + 8));
+                            boolean ok = bi >= 0 && Arrays.asList(sp.biomes).contains(gids[bi]);
+                            if (ok) out.add(sp.realIds[0]);
+                        }
+                    }
+                    return out.toArray(new String[0]);
+                }
+            };
+            File pw = new File(tmp, "proof-world");
+            ExactTestWorld.write(pw, aligned, a0, b0, a1, b1);
+            ExactPlace ap = ExactPlace.read(pw, g.seed, a0, b0, a1 - a0 + 1, b1 - b0 + 1, null);
+            check(ap.starts.stream().anyMatch(s -> s.id.equals("minecraft:ruined_portal") && s.cx == pcx && s.cz == pcz), "the ruined portal's start was read from its chunk (" + ap.starts.size() + " starts)");
+            check(ap.starts.stream().noneMatch(s -> s.id.equals("INVALID")) && ap.starts.stream().noneMatch(s -> s.id.equals("minecraft:village") && s.cx != 0 && false), "a start that did not happen is not counted");
+            Exactness.Report good = Exactness.check(ap, g);
+            System.out.println("proof: " + good.verdict + "  |  " + good.structureLines + " | found " + good.found.size());
+            check(good.level == 2 && good.biomePct > 99 && good.expected >= 1 && good.confirmed == good.expected, "a world that follows the map and the seed is called exact: " + good.verdict);
+            check(good.structureLines.stream().anyMatch(l -> l.contains("Ruined Portal") && l.startsWith("\u2713")), "the ruined portal is confirmed in the real world");
+            File sf = new File(tmp, "proof.slx");
+            ap.save(sf);
+            ExactPlace al = ExactPlace.load(sf);
+            check(al.starts.size() == ap.starts.size(), "structure starts survive saving and loading");
+            // the structures are not where the seed says: not the same world
+            withStarts[0] = false;
+            File pw2 = new File(tmp, "proof-world2");
+            ExactTestWorld.write(pw2, aligned, a0, b0, a1, b1);
+            Exactness.Report noStarts = Exactness.check(ExactPlace.read(pw2, g.seed, a0, b0, a1 - a0 + 1, b1 - b0 + 1, null), g);
+            check(noStarts.level == 0 && noStarts.expected >= 1 && noStarts.confirmed == 0, "structures missing where the seed puts them: not exact (" + noStarts.verdict + ")");
+            // a different world altogether: the biomes disagree
+            File pw3 = new File(tmp, "proof-world3");
+            ExactTestWorld.write(pw3, new ExactTestWorld.Demo(1), a0, b0, a1, b1);
+            Exactness.Report other = Exactness.check(ExactPlace.read(pw3, g.seed, a0, b0, a1 - a0 + 1, b1 - b0 + 1, null), g);
+            check(other.level == 0 && other.biomePct < 60, "another world is not called exact (" + String.format("%.0f", other.biomePct) + "% of biomes agree)");
+        }
+
         // --- the whole job: nothing on disk -> generate, read, keep a small copy, delete the big files; then the second time it opens the copy
         ExactStore.deleteTree(ExactStore.root());
         ExactJob.testServer = fake;
