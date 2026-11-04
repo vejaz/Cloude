@@ -76,7 +76,7 @@ final class ExactCard extends Theme.Card {
         working = false;
         status.setText(html("The picture around the spot is generated to look right. Make it exact and it shows the real blocks of your world, from its seed " + grid.seed + "."));
         status.setForeground(Theme.MUTED);
-        detail.setText(html("The first time takes a few minutes. It is kept afterwards, in a small file, inside your storage limit (Settings)."));
+        detail.setText(html("Only the part around the marked spot is made (about " + (2 * ExactJob.radius()) + " blocks across), so it is quick. It is kept afterwards, in a small file, inside your storage limit (Settings)."));
         meter.setVisible(false);
         go.setVisible(true);
         go.text = place == null ? "Make it exact" : "Make it exact again";
@@ -90,7 +90,7 @@ final class ExactCard extends Theme.Card {
     /** Opens a copy that is already on disk, without asking anything. */
     void autoOpen() {
         if (!Settings.getBool("exactAuto", true)) return;
-        if (ExactJob.stored(grid.seed, spotX, spotZ, 128) == null) return;
+        if (ExactJob.stored(grid.seed, spotX, spotZ, Math.min(ExactJob.radius(), 64)) == null) return;
         begin(true);
     }
 
@@ -104,7 +104,7 @@ final class ExactCard extends Theme.Card {
 
     private void begin(boolean quiet) {
         if (working) return;
-        if (!quiet && ExactJob.stored(grid.seed, spotX, spotZ, 128) == null && !consent()) return;
+        if (!quiet && ExactJob.stored(grid.seed, spotX, spotZ, Math.min(ExactJob.radius(), 64)) == null && !consent()) return;
         working = true;
         place = null;
         status.setForeground(Theme.TEXT);

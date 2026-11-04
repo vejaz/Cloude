@@ -71,6 +71,7 @@ final class SettingsDialog extends JDialog {
         in3.add(new Ui.Slider("Time of day", 8, 80, Settings.getInt("sun", 52), v -> v < 20 ? "dawn" : v < 62 ? "day" : "noon", v -> Settings.set("sun", (int) (double) v)));
         in3.add(new Ui.Slider("How far you can see", 150, 1100, Settings.getInt("distance", 520), v -> String.format("%,.0f blocks", v), v -> Settings.set("distance", (int) (double) v)));
         in3.add(new Ui.Slider("Detail", 1, 3, Settings.getInt("detail", 2), v -> v < 1.5 ? "fast" : v < 2.5 ? "balanced" : "sharp", v -> Settings.set("detail", (int) Math.round(v))));
+        in3.add(new Ui.Toggle("Simple look  (flat colours, fastest)", Settings.getBool("simple", false), v -> Settings.set("simple", v)));
         in3.add(new Ui.Toggle("Shadows", Settings.getBool("shadows", true), v -> Settings.set("shadows", v)));
         in3.add(new Ui.Toggle("Soft corners", Settings.getBool("ao", true), v -> Settings.set("ao", v)));
         in3.add(new Ui.Toggle("Villages and structures", Settings.getBool("showSites", true), v -> Settings.set("showSites", v)));
@@ -97,13 +98,13 @@ final class SettingsDialog extends JDialog {
         JPanel in5 = stack();
         in5.add(new Ui.Toggle("Open a saved exact place automatically", Settings.getBool("exactAuto", true), v -> Settings.set("exactAuto", v)));
         in5.add(Box.createVerticalStrut(6));
-        in5.add(Theme.label("How much around the spot is made exact", Theme.UI, Theme.MUTED));
+        in5.add(Theme.label("How much around the marked spot is made exact", Theme.UI, Theme.MUTED));
         in5.add(Box.createVerticalStrut(8));
-        int[] radii = {160, 288, 448};
+        int[] radii = {48, 80, 160};
         int ri = 1;
         for (int i = 0; i < radii.length; i++) if (Math.abs(radii[i] - ExactJob.radius()) < Math.abs(radii[ri] - ExactJob.radius())) ri = i;
-        in5.add(new Ui.Seg(new String[]{"Small", "Normal", "Large"}, ri, i -> Settings.set("exactRadius", radii[i])));
-        JLabel rn = new JLabel("<html><body style='width:300px'>Small is about 320 blocks across and takes a minute or two; Large is about 900 blocks across and takes much longer and more disk.</body></html>");
+        in5.add(new Ui.Seg(new String[]{"Small", "Normal", "Large"}, ri, i -> Settings.set("exactSize", radii[i])));
+        JLabel rn = new JLabel("<html><body style='width:300px'>Only the part around the marked spot is generated. Small is about 100 blocks across, Normal about 160, Large about 320. Smaller is quicker and uses less disk.</body></html>");
         rn.setFont(Theme.SMALL);
         rn.setForeground(Theme.DIM);
         rn.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -119,7 +120,7 @@ final class SettingsDialog extends JDialog {
         col.add(Box.createVerticalStrut(14));
 
         Theme.Btn reset = new Theme.Btn("Put everything back to normal", false).on(() -> {
-            for (String k : new String[]{"accent", "cardSize", "animations", "tips", "player", "mapMode", "sun", "distance", "detail", "shadows", "ao", "showSites", "pics3d", "exactAuto", "exactRadius"}) Settings.set(k, defaults(k));
+            for (String k : new String[]{"accent", "cardSize", "animations", "tips", "player", "mapMode", "sun", "distance", "detail", "shadows", "ao", "showSites", "pics3d", "exactAuto", "exactSize", "simple"}) Settings.set(k, defaults(k));
             dispose();
         });
         reset.setPreferredSize(new Dimension(100, 34));
@@ -145,7 +146,7 @@ final class SettingsDialog extends JDialog {
     private static String defaults(String k) {
         switch (k) {
             case "accent": return "Cyan"; case "cardSize": return "medium"; case "player": return "vejasss"; case "mapMode": return "3d";
-            case "sun": return "52"; case "distance": return "520"; case "detail": return "2"; case "exactRadius": return "288";
+            case "sun": return "52"; case "distance": return "520"; case "detail": return "2"; case "exactSize": return "80"; case "simple": return "false";
             default: return "true";
         }
     }

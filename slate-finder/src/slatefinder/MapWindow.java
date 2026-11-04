@@ -72,8 +72,10 @@ final class MapWindow extends JFrame {
         view.opts.shadows = Settings.getBool("shadows", true);
         view.opts.ao = Settings.getBool("ao", true);
         view.showSites = Settings.getBool("showSites", true);
+        view.simple = Settings.getBool("simple", false);
         view.wy = world.topAt(x, z) + 1.62;
         view.hoverInfo = s -> status.setText(s.isEmpty() ? " " : s);
+        view.modeListener = m -> SwingUtilities.invokeLater(() -> { if (modeSeg != null) modeSeg.setIndex(m == WorldView.Mode.ORBIT ? 0 : m == WorldView.Mode.WALK ? 1 : 2); });
 
         WorldView.Marker spot = new WorldView.Marker("Your spot", x, z, Skin.accent());
         spot.primary = true;
@@ -289,7 +291,7 @@ final class MapWindow extends JFrame {
         bar.setBorder(new EmptyBorder(8, 18, 10, 18));
         status.setFont(Theme.SMALL);
         status.setForeground(Theme.MUTED);
-        JLabel help = Theme.label("Drag to turn  ·  wheel to zoom  ·  right-drag to move  ·  double-click to stand there  ·  W A S D to walk  ·  F to fly  ·  R to go back", Theme.SMALL, Theme.DIM);
+        JLabel help = Theme.label("Drag to turn  ·  wheel zooms toward the pointer  ·  right-drag to move  ·  click a pin or a village dot to stand there  ·  double-click the ground to stand there  ·  W A S D to walk  ·  F to fly  ·  R to go back", Theme.SMALL, Theme.DIM);
         bar.add(status, BorderLayout.WEST);
         bar.add(help, BorderLayout.EAST);
         return bar;
@@ -331,6 +333,7 @@ final class MapWindow extends JFrame {
         in2.add(new Ui.Slider("Time of day", 8, 80, view.opts.sunElev, v -> v < 20 ? "dawn" : v < 62 ? "day" : "noon", v -> { view.opts.sunElev = v; Settings.set("sun", (int) (double) v); view.render(); }));
         in2.add(new Ui.Slider("How far you can see", 150, 1100, view.opts.maxDist, v -> String.format("%,.0f blocks", v), v -> { view.opts.maxDist = (int) (double) v; Settings.set("distance", (int) (double) v); view.render(); }));
         in2.add(new Ui.Slider("Field of view  (stand there)", 30, 105, Math.toDegrees(view.walkFov), v -> String.format("%.0f°", v), v -> { view.walkFov = Math.toRadians(v); view.render(); }));
+        in2.add(new Ui.Toggle("Simple look  (flat colours, fastest)", view.simple, v -> { view.simple = v; Settings.set("simple", v); view.render(); }));
         in2.add(new Ui.Slider("Detail", 1, 3, view.quality, v -> v < 1.5 ? "fast" : v < 2.5 ? "balanced" : "sharp", v -> { view.quality = (int) Math.round(v); Settings.set("detail", view.quality); view.render(); }));
         c2.add(in2, BorderLayout.CENTER);
         col.add(c2);

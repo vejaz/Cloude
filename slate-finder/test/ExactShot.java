@@ -40,7 +40,7 @@ public final class ExactShot {
         ExactStore.deleteTree(ExactStore.root());
         ExactJob.testServer = fake;
         Settings.set("exactConsent", true);
-        Settings.set("exactRadius", 160);
+        Settings.set("exactSize", 80);
         String mc = System.getenv("MCJAR");
         if (mc != null) Settings.set("mcJar", mc);
         Settings.set("mapMode", "3d");

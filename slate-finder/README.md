@@ -5,7 +5,7 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-215035.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-220542.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
@@ -20,7 +20,8 @@ To go back, delete that one jar. Your older builds are untouched.
   1. It asks once (you agree to Minecraft's EULA) before downloading the game's server (about 56 MB, from Mojang) into
      `%APPDATA%\SlateFinder\exact\server`.
   2. It runs that server quietly on this computer, reachable only from this computer, with your seed, and asks it to load the area.
-     Java 21 (the one this app already runs on) is used. About 1,400 chunks (a 600 x 600 block area) take a few minutes.
+     Java 21 (the one this app already runs on) is used. Only the part around the marked spot is made: about 160 blocks across
+     (Settings > Exact world: Small about 100, Normal about 160, Large about 320), roughly 120 chunks, so it is quick.
   3. It reads the finished chunks, keeps a small copy (a few MB) in `%APPDATA%\SlateFinder\exact\places`, and deletes the big
      world files. The next time you open the same spot it opens at once, with no server.
   - The game's pictures are read from your own Minecraft jar (`.minecraft\versions\1.21.11`); if it is not found the app's own
@@ -33,6 +34,13 @@ To go back, delete that one jar. Your older builds are untouched.
   longer allocate. A picture that is no longer wanted (you zoomed or turned again) is dropped at once instead of being finished first.
 - **Test coordinates window fixed.** Closing it with the X used to only hide it, so pressing the button again did nothing. It now
   opens every time (checked by `ReverseReopenTest`, which fails without the fix).
+- **3D view: zoom to the pointer, pins that stay put, click to stand there.** The wheel zooms toward whatever is under the pointer
+  (3D, standing and top-down). Pins, names and village dots are placed with the same camera as the picture on screen, so they no
+  longer slide around while you drag and the picture catches up. Click a pin or a village dot (the pointer turns into a hand) and
+  you stand there; dragging from a pin only turns the view.
+- **Quicker, simpler pictures while you move.** While the view is moving it draws flat block colours (easy to read, drawn in a
+  fraction of the time); the detailed textured picture with shadows follows once you hold still for a moment. Settings > The map and
+  the View box have **Simple look (flat colours, fastest)** to keep it flat all the time.
 - **Storage you control.** Settings > Storage for the maps shows `used of limit` (default 10 GB) with a bar and a breakdown, lets
   you change the limit (1 to 200 GB), **Delete the memory of the maps** (saved places and the 3D pictures of the book), remove
   the downloaded server, and open the folder. When the limit is reached the places you looked at longest ago are deleted first.
@@ -138,5 +146,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (1,056 checks), `World3DTest` (227), `ReverseReopenTest` (15), `ExactTest` (66: reads a made-up world written in the game's file format, and runs a stand-in for the game's server), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (1,056 checks), `World3DTest` (227), `ReverseReopenTest` (15), `ViewTest` (34), `ExactTest` (66: reads a made-up world written in the game's file format, and runs a stand-in for the game's server), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

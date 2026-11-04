@@ -15,7 +15,8 @@ final class ExactJob {
         void failed(String message, boolean cancelled);
     }
 
-    static final int DEFAULT_RADIUS = 288;
+    /** Blocks each way from the marked spot: about 160 across, so only the part that matters is generated. */
+    static final int DEFAULT_RADIUS = 80;
 
     /** For tests: a stand-in for the game's server jar. */
     static File testServer;
@@ -25,7 +26,7 @@ final class ExactJob {
 
     void cancel() { cancelled = true; }
 
-    static int radius() { return Math.max(96, Math.min(480, Settings.getInt("exactRadius", DEFAULT_RADIUS))); }
+    static int radius() { return Math.max(32, Math.min(480, Settings.getInt("exactSize", DEFAULT_RADIUS))); }
 
     static String fileName(long seed, int cx0, int cz0, int cw, int cd) { return seed + "_" + cx0 + "_" + cz0 + "_" + cw + "x" + cd + ".slx"; }
 
@@ -56,7 +57,7 @@ final class ExactJob {
     private void run(long seed, int x, int z, Listener l) {
         try {
             int r = radius();
-            ExactPlace have = stored(seed, x, z, Math.min(r, 128));
+            ExactPlace have = stored(seed, x, z, Math.min(r, 64));
             if (have != null) { l.done(have, true); return; }
             if (Runtime.version().feature() < 21) { l.failed("The game's server needs Java 21 or newer, and this app is running on Java " + Runtime.version().feature() + ".", false); return; }
 

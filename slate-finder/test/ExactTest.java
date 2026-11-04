@@ -308,7 +308,7 @@ public final class ExactTest {
         // --- the whole job: nothing on disk -> generate, read, keep a small copy, delete the big files; then the second time it opens the copy
         ExactStore.deleteTree(ExactStore.root());
         ExactJob.testServer = fake;
-        Settings.set("exactRadius", 96);
+        Settings.set("exactSize", 96);
         for (int round = 0; round < 3; round++) {
             final Object[] res = new Object[3];
             final List<String> says = new ArrayList<>();
@@ -350,7 +350,7 @@ public final class ExactTest {
             }
         }
         ExactJob.testServer = null;
-        Settings.set("exactRadius", ExactJob.DEFAULT_RADIUS);
+        Settings.set("exactSize", ExactJob.DEFAULT_RADIUS);
         ExactStore.deleteTree(tmp);
         System.out.println(checks + " checks, " + fails + " failed");
         System.exit(fails == 0 ? 0 : 1);

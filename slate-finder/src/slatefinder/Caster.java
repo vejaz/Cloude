@@ -26,6 +26,8 @@ final class Caster {
         double fog = 1.0;
         int skyTop = 0xFF5C98E0, skyHorizon = 0xFFCFE2F4;
         boolean underwaterTint = true;
+        /** Flat colour per block instead of its picture: quicker to draw and easier to read from far away. */
+        boolean flat;
     }
 
     // ------------------------------------------------------------------ colours
@@ -209,7 +211,7 @@ final class Caster {
         if (fv >= 1) fv = 0.999;
         int tint = (b == Blocks3D.GRASS || b == Blocks3D.GRASS_TALL || (b == Blocks3D.MOSS && !world.exactTextures)) ? (int) hit[10] : (Blocks3D.leaf(b) && b != Blocks3D.BIRCH_LEAVES && b != Blocks3D.SPRUCE_LEAVES && b != Blocks3D.CHERRY_LEAVES && b != Blocks3D.PALE_LEAVES && b != Blocks3D.LEAF_FLOWER) ? (int) hit[11] : 0;
         if (world.exactTextures) { if (b == Blocks3D.BIRCH_LEAVES) tint = 0xFF80A755; else if (b == Blocks3D.SPRUCE_LEAVES) tint = 0xFF619961; }
-        int col = texel(b, face == 3 ? 0 : face, fu, fv, tint);
+        int col = o.flat ? avgColour(b, tint) : texel(b, face == 3 ? 0 : face, fu, fv, tint);
         double dot = Math.max(0, nx * sx + ny * sy + nz * sz);
         double light = 0.40 + 0.62 * dot;
         if (face == 1) light *= 0.92;

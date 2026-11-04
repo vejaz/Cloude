@@ -49,13 +49,32 @@ final class WorldView extends JComponent {
     int quality = 2;
     Consumer<String> hoverInfo = s -> { };
 
-    private BufferedImage front;
+    /** A finished picture and the view it was drawn from: pins and names are placed with these, so they stay on the ground while the picture catches up. */
+    private static final class Frame {
+        BufferedImage img;
+        Caster.Cam cam;
+        double mx, mz, bpp;
+        Mode mode;
+    }
+
+    private volatile Frame frame;
+    /** What the overlays are placed with while painting. */
+    private Caster.Cam vCam;
+    private double vMx, vMz, vBpp = 6;
+    boolean simple;
+    Consumer<Mode> modeListener = m -> { };
+    /** Things that can be clicked to go there: {x, y, radius, world x, world z}, and what they are called. */
+    private final List<double[]> hot = new ArrayList<>();
+    private final List<String> hotName = new ArrayList<>();
+    private int pressX, pressY;
+    private boolean moved;
     private final AtomicInteger version = new AtomicInteger();
     private final Object lock = new Object();
     private boolean dirty;
     private volatile boolean alive = true;
     private volatile boolean busy;
     private volatile int doneStep = 99;
+    private final AtomicInteger frames = new AtomicInteger();
     private int hx = -1, hy = -1;
     private String hoverText = "";
     private final boolean[] keys = new boolean[256];
@@ -76,11 +95,20 @@ final class WorldView extends JComponent {
         mover.start();
 
         MouseAdapter ma = new MouseAdapter() {
-            public void mousePressed(MouseEvent e) { requestFocusInWindow(); lastX = e.getX(); lastY = e.getY(); button = e.getButton(); }
-            public void mouseDragged(MouseEvent e) { drag(e.getX() - lastX, e.getY() - lastY, button); lastX = e.getX(); lastY = e.getY(); hover(e.getX(), e.getY()); }
+            public void mousePressed(MouseEvent e) { requestFocusInWindow(); lastX = pressX = e.getX(); lastY = pressY = e.getY(); button = e.getButton(); moved = false; }
+            public void mouseReleased(MouseEvent e) {
+                if (e.getButton() == MouseEvent.BUTTON1 && !moved && Math.abs(e.getX() - pressX) < 5 && Math.abs(e.getY() - pressY) < 5) {
+                    int i = hotAt(e.getX(), e.getY());
+                    if (i >= 0) goTo(hot.get(i)[3], hot.get(i)[4], hotName.get(i));
+                }
+            }
+            public void mouseDragged(MouseEvent e) {
+                if (Math.abs(e.getX() - pressX) > 4 || Math.abs(e.getY() - pressY) > 4) moved = true;
+                drag(e.getX() - lastX, e.getY() - lastY, button); lastX = e.getX(); lastY = e.getY(); hover(e.getX(), e.getY());
+            }
             public void mouseMoved(MouseEvent e) { hover(e.getX(), e.getY()); }
             public void mouseExited(MouseEvent e) { hx = -1; repaint(); }
-            public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1) standHere(e.getX(), e.getY()); }
+            public void mouseClicked(MouseEvent e) { if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1 && hotAt(e.getX(), e.getY()) < 0) standHere(e.getX(), e.getY()); }
             public void mouseWheelMoved(MouseWheelEvent e) { zoom(e.getPreciseWheelRotation(), e.getX(), e.getY()); }
         };
         addMouseListener(ma);
@@ -137,6 +165,7 @@ final class WorldView extends JComponent {
         if (m == Mode.ORBIT && mode == Mode.MAP) { tx = mx; tz = mz; }
         if (m == Mode.WALK && mode == Mode.MAP) { wx = mx; wz = mz; wy = groundHere() + 1.62; }
         mode = m;
+        modeListener.accept(m);
         opts.maxDist = m == Mode.WALK ? Math.max(300, opts.maxDist) : opts.maxDist;
         render();
     }
@@ -181,13 +210,47 @@ final class WorldView extends JComponent {
         render();
     }
 
+    /** Clicking a pin or a village dot: stand there, looking the way the view was looking. */
+    void goTo(double x, double z, String name) {
+        if (mode == Mode.ORBIT) wyaw = oyaw;
+        if (mode != Mode.WALK) setMode(Mode.WALK);        // switching modes sets the standing place from the old view, so do it first
+        wx = x + 0.5; wz = z + 0.5;
+        wy = (world.exactTextures ? world.groundAt((int) Math.floor(x), (int) Math.floor(z)) : world.topAt((int) Math.floor(x), (int) Math.floor(z))) + 1.62;
+        wpitch = Math.toRadians(-4);
+        fly = false;
+        hoverText = "Standing at " + name + "   X " + String.format("%,d", (long) Math.floor(x)) + "   Z " + String.format("%,d", (long) Math.floor(z));
+        hoverInfo.accept(hoverText);
+        render();
+    }
+
+    /** For tests: where the clickable pins and dots were drawn last: {x, y, radius, world x, world z}. */
+    List<double[]> hotSpots() { return new ArrayList<>(hot); }
+    int stepDone() { return doneStep; }
+    int framesDrawn() { return frames.get(); }
+    boolean isBusy() { return busy; }
+
+    /** The clickable pin or dot under this point, or -1. */
+    private int hotAt(int px, int py) {
+        int best = -1;
+        double bd = 1e18;
+        for (int i = 0; i < hot.size(); i++) {
+            double[] h = hot.get(i);
+            double d = Math.hypot(px - h[0], py - h[1]);
+            if (d <= h[2] && d < bd) { bd = d; best = i; }
+        }
+        return best;
+    }
+
     private double[] hitAt(int px, int py) {
         int w = getWidth(), h = getHeight();
+        Frame f = frame;
+        boolean same = f != null && f.mode == mode;      // what is under the pointer is what is drawn, not where the camera is heading
         if (mode == Mode.MAP) {
-            double x = mx + (px - w / 2.0) * bpp, z = mz + (py - h / 2.0) * bpp;
+            double m0 = same ? f.mx : mx, m1 = same ? f.mz : mz, b = same ? f.bpp : bpp;
+            double x = m0 + (px - w / 2.0) * b, z = m1 + (py - h / 2.0) * b;
             return new double[]{x, world.topAt((int) Math.floor(x), (int) Math.floor(z)), z};
         }
-        return caster.pick(cam(), w, h, px, py, opts);
+        return caster.pick(same ? f.cam : cam(), w, h, px, py, opts);
     }
 
     // ------------------------------------------------------------------ input
@@ -204,13 +267,27 @@ final class WorldView extends JComponent {
         render();
     }
 
-    private void zoom(double rot, int px, int py) {
-        if (mode == Mode.ORBIT) dist = Math.max(3, Math.min(2800, dist * Math.exp(rot * 0.16)));
-        else if (mode == Mode.WALK) walkFov = Math.max(Math.toRadians(18), Math.min(Math.toRadians(110), walkFov * Math.exp(rot * 0.08)));
-        else {
-            double bx = mx + (px - getWidth() / 2.0) * bpp, bz = mz + (py - getHeight() / 2.0) * bpp;
-            bpp = Math.max(0.04, Math.min(90, bpp * Math.exp(rot * 0.2)));
-            mx = bx - (px - getWidth() / 2.0) * bpp; mz = bz - (py - getHeight() / 2.0) * bpp;
+    /** Zooms toward the point under the pointer, so what you are looking at stays where it is while it gets bigger or smaller. */
+    void zoom(double rot, int px, int py) {
+        int w = getWidth(), h = getHeight();
+        if (mode == Mode.ORBIT) {
+            double nd = Math.max(3, Math.min(2800, dist * Math.exp(rot * 0.22)));
+            double k = nd / dist;
+            double[] p = k == 1 ? null : caster.pick(cam(), w, h, px, py, opts);
+            if (p != null) { tx = p[0] + k * (tx - p[0]); tz = p[2] + k * (tz - p[2]); }
+            dist = nd;
+        } else if (mode == Mode.WALK) {
+            double old = walkFov, nf = Math.max(Math.toRadians(18), Math.min(Math.toRadians(110), old * Math.exp(rot * 0.1)));
+            double aspect = w / (double) Math.max(1, h), ndx = (px + 0.5) / w * 2 - 1, ndy = 1 - (py + 0.5) / h * 2;
+            double tOld = Math.tan(old / 2), tNew = Math.tan(nf / 2);
+            // turn toward the pointer by the angle the picture's shrinking moves it away from the middle
+            wyaw -= Math.atan(ndx * tOld * aspect) - Math.atan(ndx * tNew * aspect);
+            wpitch = Math.max(Math.toRadians(-89), Math.min(Math.toRadians(89), wpitch + Math.atan(ndy * tOld) - Math.atan(ndy * tNew)));
+            walkFov = nf;
+        } else {
+            double bx = mx + (px - w / 2.0) * bpp, bz = mz + (py - h / 2.0) * bpp;
+            bpp = Math.max(0.04, Math.min(90, bpp * Math.exp(rot * 0.22)));
+            mx = bx - (px - w / 2.0) * bpp; mz = bz - (py - h / 2.0) * bpp;
         }
         render();
     }
@@ -242,14 +319,20 @@ final class WorldView extends JComponent {
 
     private void hover(int px, int py) {
         hx = px; hy = py;
+        int hs = hotAt(px, py);
+        setCursor(Cursor.getPredefinedCursor(hs >= 0 ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
         long now = System.currentTimeMillis();
         if (now - lastPick > 40) {
             lastPick = now;
-            double[] p = hitAt(px, py);
-            if (p != null) {
-                int x = (int) Math.floor(p[0]), z = (int) Math.floor(p[2]);
-                hoverText = String.format("X %,d   Y %d   Z %,d   ·   %s", x, (int) Math.floor(p[1]), z, PlaceSearch.pretty(world.biomeName(x, z)));
-            } else hoverText = "";
+            if (hs >= 0) {
+                hoverText = hotName.get(hs) + "   X " + String.format("%,d", (long) hot.get(hs)[3]) + "   Z " + String.format("%,d", (long) hot.get(hs)[4]) + "   ·   click to stand there";
+            } else {
+                double[] p = hitAt(px, py);
+                if (p != null) {
+                    int x = (int) Math.floor(p[0]), z = (int) Math.floor(p[2]);
+                    hoverText = String.format("X %,d   Y %d   Z %,d   ·   %s", x, (int) Math.floor(p[1]), z, PlaceSearch.pretty(world.biomeName(x, z)));
+                } else hoverText = "";
+            }
             hoverInfo.accept(hoverText);
         }
         repaint();
@@ -272,25 +355,38 @@ final class WorldView extends JComponent {
             int ver = version.get();
             int w = getWidth(), h = getHeight();
             if (w < 40 || h < 40) continue;
-            int[] steps = quality >= 3 ? new int[]{8, 4, 2, 1} : quality == 2 ? new int[]{8, 3, 1} : new int[]{8, 3};
+            boolean simpleNow = simple;
+            // quick flat-coloured pictures first, so the view answers at once; the detailed one comes when it has held still for a moment
+            int[] steps = simpleNow ? new int[]{8, 3, 2} : quality >= 3 ? new int[]{8, 4, 2, 1} : quality == 2 ? new int[]{8, 3, 2, 1} : new int[]{8, 4};
             busy = true;
             for (int s : steps) {
                 if (ver != version.get()) break;
+                if (s == 1) {
+                    long until = System.currentTimeMillis() + 220;
+                    while (System.currentTimeMillis() < until && ver == version.get() && alive) { try { Thread.sleep(15); } catch (InterruptedException e) { return; } }
+                    if (ver != version.get()) break;
+                }
+                Frame f = new Frame();
+                f.mode = mode; f.mx = mx; f.mz = mz; f.bpp = bpp;
+                f.cam = mode == Mode.MAP ? null : cam();
                 BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
                 int[] pix = ((DataBufferInt) img.getRaster().getDataBuffer()).getData();
                 try {
-                    if (mode == Mode.MAP) {
+                    opts.flat = simpleNow || s > 1;
+                    if (f.mode == Mode.MAP) {
                         int rw = Math.max(1, (w + s - 1) / s), rh = Math.max(1, (h + s - 1) / s);
                         int[] small = new int[rw * rh];
-                        caster.renderMap(small, rw, rh, mx, mz, bpp * s, opts, false, () -> ver != version.get());
+                        caster.renderMap(small, rw, rh, f.mx, f.mz, f.bpp * s, opts, false, () -> ver != version.get());
                         for (int y = 0; y < h; y++) { int sy = Math.min(rh - 1, y / s); for (int x = 0; x < w; x++) pix[y * w + x] = small[sy * rw + Math.min(rw - 1, x / s)]; }
                     } else {
-                        caster.render3D(pix, w, h, s, cam(), opts, s == 1, () -> ver != version.get());
+                        caster.render3D(pix, w, h, s, f.cam, opts, s == 1, () -> ver != version.get());
                     }
                 } catch (RuntimeException ex) { break; }
                 if (ver != version.get()) break;
-                front = img;
+                f.img = img;
+                frame = f;
                 doneStep = s;
+                frames.incrementAndGet();
                 SwingUtilities.invokeLater(this::repaint);
             }
             busy = false;
@@ -313,7 +409,13 @@ final class WorldView extends JComponent {
         int w = getWidth(), h = getHeight();
         g.setColor(Theme.BG);
         g.fillRect(0, 0, w, h);
-        BufferedImage im = front;
+        Frame fr = frame;
+        BufferedImage im = fr == null ? null : fr.img;
+        boolean same = fr != null && fr.mode == mode;
+        vCam = same ? fr.cam : (mode == Mode.MAP ? null : cam());
+        vMx = same ? fr.mx : mx; vMz = same ? fr.mz : mz; vBpp = same ? fr.bpp : bpp;
+        hot.clear();
+        hotName.clear();
         if (im != null) {
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g.drawImage(im, 0, 0, w, h, null);
@@ -322,7 +424,7 @@ final class WorldView extends JComponent {
             g.setFont(Theme.UI);
             g.drawString("Building the landscape…", w / 2 - 70, h / 2);
         }
-        Caster.Cam cam = mode == Mode.MAP ? null : cam();
+        Caster.Cam cam = vCam;
         if (showGrid && mode == Mode.MAP) drawGrid(g, w, h);
         if (showSites) drawSites(g, cam, w, h);
         if (showMarkers) drawMarkers(g, cam, w, h);
@@ -330,26 +432,26 @@ final class WorldView extends JComponent {
     }
 
     private double[] screen(Caster.Cam cam, int w, int h, double x, double y, double z) {
-        if (mode == Mode.MAP) return new double[]{w / 2.0 + (x - mx) / bpp, h / 2.0 + (z - mz) / bpp, 1};
+        if (mode == Mode.MAP) return new double[]{w / 2.0 + (x - vMx) / vBpp, h / 2.0 + (z - vMz) / vBpp, 1};
         return Caster.project(cam, w, h, x, y, z);
     }
 
     private void drawGrid(Graphics2D g, int w, int h) {
         double spacing = 16;
-        while (spacing / bpp < 70) spacing *= (spacing < 64 ? 4 : 4);
-        if (spacing / bpp > 400 && spacing > 16) spacing /= 4;
-        double x0 = mx - w / 2.0 * bpp, x1 = mx + w / 2.0 * bpp, z0 = mz - h / 2.0 * bpp, z1 = mz + h / 2.0 * bpp;
+        while (spacing / vBpp < 70) spacing *= (spacing < 64 ? 4 : 4);
+        if (spacing / vBpp > 400 && spacing > 16) spacing /= 4;
+        double x0 = vMx - w / 2.0 * vBpp, x1 = vMx + w / 2.0 * vBpp, z0 = vMz - h / 2.0 * vBpp, z1 = vMz + h / 2.0 * vBpp;
         g.setStroke(new BasicStroke(1f));
         g.setFont(Theme.SMALL);
         for (double x = Math.floor(x0 / spacing) * spacing; x <= x1; x += spacing) {
-            int sx = (int) Math.round(w / 2.0 + (x - mx) / bpp);
+            int sx = (int) Math.round(w / 2.0 + (x - vMx) / vBpp);
             g.setColor(new Color(255, 255, 255, spacing % 1024 == 0 ? 60 : 32));
             g.drawLine(sx, 0, sx, h);
             g.setColor(new Color(255, 255, 255, 150));
             g.drawString(String.format("%,d", (long) x), sx + 4, 14);
         }
         for (double z = Math.floor(z0 / spacing) * spacing; z <= z1; z += spacing) {
-            int sy = (int) Math.round(h / 2.0 + (z - mz) / bpp);
+            int sy = (int) Math.round(h / 2.0 + (z - vMz) / vBpp);
             g.setColor(new Color(255, 255, 255, spacing % 1024 == 0 ? 60 : 32));
             g.drawLine(0, sy, w, sy);
             g.setColor(new Color(255, 255, 255, 150));
@@ -368,6 +470,8 @@ final class WorldView extends JComponent {
             if (p == null || p[0] < -20 || p[0] > w + 20 || p[1] < -20 || p[1] > h + 20) continue;
             if (++drawn > 80) break;
             house(g, (int) p[0], (int) p[1], new Color(0xF2C46B));
+            hot.add(new double[]{p[0], p[1], 12, s.x, s.z});
+            hotName.add(Lexicon.nameOf(s.kind));
         }
     }
 
@@ -431,6 +535,8 @@ final class WorldView extends JComponent {
             g.fillOval(x - r, y - r, r * 2, r * 2);
             g.setColor(Color.WHITE);
             if (m.primary) { g.setStroke(new BasicStroke(2f)); g.drawOval(x - r + 3, y - r + 3, r * 2 - 6, r * 2 - 6); g.fillOval(x - 2, y - 2, 4, 4); g.setStroke(new BasicStroke(1f)); }
+            hot.add(new double[]{x, y, r + 5, m.x, m.z});
+            hotName.add(m.label);
             if (showLabels) label(g, x, y - r - 6, m, w);
         }
     }
@@ -507,10 +613,10 @@ final class WorldView extends JComponent {
         if (mode == Mode.MAP) {
             // scale bar
             double[] nice = {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000};
-            double target = 130 * bpp;
+            double target = 130 * vBpp;
             double len = nice[0];
             for (double n : nice) if (n <= target) len = n;
-            int px = (int) (len / bpp);
+            int px = (int) (len / vBpp);
             int bx = 18, by = h - 26;
             g.setColor(new Color(10, 12, 16, 200));
             g.fill(new RoundRectangle2D.Float(bx - 8, by - 20, px + 70, 32, 9, 9));
@@ -523,7 +629,7 @@ final class WorldView extends JComponent {
             g.setFont(Theme.SMALL_B);
             g.drawString(String.format("%,.0f blocks", len), bx + px + 8, by + 4);
         }
-        if (busy && doneStep > 1) {
+        if (busy && doneStep > 1 && !simple) {
             g.setColor(new Color(10, 12, 16, 190));
             g.fill(new RoundRectangle2D.Float(w - 120, h - 36, 108, 24, 9, 9));
             g.setColor(Theme.MUTED);
