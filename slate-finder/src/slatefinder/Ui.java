@@ -137,4 +137,40 @@ final class Ui {
             }
         }
     }
+    /** A thin progress bar. A negative value means "working, no idea how long": a block slides along it. */
+    static final class Meter extends JComponent {
+        private double value;
+        private Color colour = Skin.accent();
+        private int phase;
+        private final javax.swing.Timer timer = new javax.swing.Timer(40, e -> { phase = (phase + 7) % 1000; repaint(); });
+
+        Meter() { setPreferredSize(new Dimension(100, 10)); setMaximumSize(new Dimension(Integer.MAX_VALUE, 10)); }
+
+        void set(double v, Color c) {
+            value = v;
+            if (c != null) colour = c;
+            if (v < 0 && !timer.isRunning()) timer.start();
+            if (v >= 0 && timer.isRunning()) timer.stop();
+            repaint();
+        }
+
+        @Override public void removeNotify() { timer.stop(); super.removeNotify(); }
+
+        @Override protected void paintComponent(Graphics g0) {
+            Graphics2D g = Theme.smooth(g0);
+            int w = getWidth(), h = getHeight();
+            g.setColor(Theme.LINE);
+            g.fill(new RoundRectangle2D.Float(0, 0, w, h, h, h));
+            g.setColor(colour);
+            if (value < 0) {
+                float bw = w * 0.28f, x = (w + bw) * phase / 1000f - bw;
+                Shape old = g.getClip();
+                g.setClip(new RoundRectangle2D.Float(0, 0, w, h, h, h));
+                g.fill(new RoundRectangle2D.Float(x, 0, bw, h, h, h));
+                g.setClip(old);
+            } else {
+                g.fill(new RoundRectangle2D.Float(0, 0, (float) Math.max(h, w * Math.min(1, value)), h, h, h));
+            }
+        }
+    }
 }

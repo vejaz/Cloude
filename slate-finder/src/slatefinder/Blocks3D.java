@@ -21,9 +21,10 @@ final class Blocks3D {
         SNOW_BLOCK = 96, COUNT = 97;
 
     /** 16x16 textures: [block][256]. */
-    static final int[][] TOP = new int[COUNT][], SIDE = new int[COUNT][];
+    static final int MAX = 256;
+    static final int[][] TOP = new int[MAX][], SIDE = new int[MAX][];
     /** Average colour of a block's top, for the flat map. */
-    static final int[] AVG = new int[COUNT];
+    static final int[] AVG = new int[MAX];
 
     private static int rgb(int r, int g, int b) { return 0xFF000000 | (clamp(r) << 16) | (clamp(g) << 8) | clamp(b); }
     private static int clamp(int v) { return v < 0 ? 0 : Math.min(v, 255); }
@@ -185,6 +186,30 @@ final class Blocks3D {
             AVG[b] = rgb((int) (r / 256), (int) (g / 256), (int) (bl / 256));
         }
     }
+
+    private static final java.util.Map<String, Integer> DYNAMIC = new java.util.HashMap<>();
+    private static int nextId = COUNT;
+
+    /** A block that real world data has and this table does not: it gets the next free id and a plain textured colour. -1 when the table is full. */
+    static synchronized int register(String name, int rgb) {
+        Integer have = DYNAMIC.get(name);
+        if (have != null) return have;
+        if (nextId >= MAX) return -1;
+        int id = nextId++;
+        int c = 0xFF000000 | (rgb & 0xFFFFFF);
+        int[] t = noise(c, 0.14, 200 + id);
+        TOP[id] = t; SIDE[id] = t;
+        AVG[id] = c;
+        DYNAMIC.put(name, id);
+        return id;
+    }
+
+    static synchronized String nameOf(int id) {
+        for (java.util.Map.Entry<String, Integer> e : DYNAMIC.entrySet()) if (e.getValue() == id) return e.getKey();
+        return null;
+    }
+
+    static synchronized java.util.Map<String, Integer> dynamic() { return new java.util.HashMap<>(DYNAMIC); }
 
     /** Blocks that are drawn as thin plants: they do not make a solid column of their own. */
     static boolean plant(byte b) {

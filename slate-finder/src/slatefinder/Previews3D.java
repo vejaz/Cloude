@@ -48,6 +48,9 @@ final class Previews3D {
 
     static BufferedImage ready(Lexicon.Item it) { return READY.get(it.id); }
 
+    /** Forgets the pictures held in memory (after their files were deleted). */
+    static void forget() { READY.clear(); }
+
     static File cacheDir() {
         String ad = System.getenv("APPDATA");
         File dir = new File(ad != null ? new File(ad, "SlateFinder") : new File("."), "previews3d-" + VERSION);

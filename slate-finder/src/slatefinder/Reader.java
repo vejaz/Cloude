@@ -20,6 +20,8 @@ public final class Reader {
         public Lexicon.Ref ref;
         /** The words as typed. */
         public final String said;
+        /** True for the made-up spot "anywhere near all of these", which is no biome or structure of its own. */
+        public boolean anywhere;
         public Role role;
         public int within;
         /** True if a number or a phrase like "next to" gave the distance, rather than the default. */
@@ -81,9 +83,30 @@ public final class Reader {
 
         /** Makes this the place whose coordinates are wanted; everything else is re-hung from it. */
         public void makeSpot(Claim c) {
-            if (c == null || !claims.contains(c) || c.role == Role.ABSENT) return;
+            if (c == null || !claims.contains(c) || c.role == Role.ABSENT || c.anywhere) return;
+            claims.removeIf(o -> o.anywhere);
             for (Claim o : claims) if (o.role == Role.TARGET) o.role = Role.NEAR;
             c.role = Role.TARGET;
+            orient(this);
+        }
+
+        public boolean isAnywhere() { for (Claim c : claims) if (c.anywhere) return true; return false; }
+
+        /** The spot becomes any place near everything that was named, instead of one of the named things. */
+        public void makeAnywhere(BiomeGrid grid) {
+            if (isAnywhere()) return;
+            for (Claim o : claims) if (o.role == Role.TARGET) o.role = Role.NEAR;
+            Claim a = anywhereClaim(grid);
+            claims.add(0, a);
+            for (Claim c : claims) if (c != a) { c.starWithin = c.starWithin > 0 ? c.starWithin : 300; }
+            orient(this);
+        }
+
+        /** Undoes {@link #makeAnywhere}: the first thing that was named is the spot again. */
+        public void clearAnywhere() {
+            if (!isAnywhere()) return;
+            claims.removeIf(o -> o.anywhere);
+            for (Claim c : claims) if (c.role == Role.NEAR && c.searchable()) { c.role = Role.TARGET; break; }
             orient(this);
         }
 
@@ -209,6 +232,38 @@ public final class Reader {
             int i = l.indexOf('|');
             HINT_MAP.put(Lexicon.stem(l.substring(0, i)), l.substring(i + 1));
         }
+    }
+
+    /** Words that say the spot is about the speaker or the coordinates, not about a thing in the world. */
+    private static final Set<String> HERE_CUES = set("place area somewhere anywhere region zone point coordinates coordinate coords coord cords cord cordinates tp teleport spot position location base house home build spawn me live lives living stand standing stood located am im want wanna need be was settle camp screenshot taken");
+    private static final Set<String> CLOSE_WORDS = set("next near nearby beside besides by close closeby around between adjacent touching alongside within");
+    private static final Set<String> FIND_WORDS = set("of for find finding search searching looking locate");
+
+    /** "coordinates next to the village and the river": a cue for where the spot is, then closeness, before anything is named. */
+    private static boolean wantsAnywhere(List<Tok> toks, int firstMention) {
+        boolean cue = false;
+        for (int q = 0; q < firstMention && q < toks.size(); q++) {
+            Tok t = toks.get(q);
+            if (t.punct) continue;
+            if (CLOSE_WORDS.contains(t.raw)) return cue;
+            if (FIND_WORDS.contains(t.raw)) return false;
+            if (HERE_CUES.contains(t.raw)) cue = true;
+        }
+        return false;
+    }
+
+    static Claim anywhereClaim(BiomeGrid grid) {
+        Lexicon.Ref r = new Lexicon.Ref("Anywhere near all of these");
+        Claim c = new Claim(r, "Anywhere near all of these", -1, -1);
+        c.anywhere = true;
+        c.role = Role.TARGET;
+        if (grid != null) {
+            for (String id : PlaceSearch.idsOf(grid)) if (!id.contains("ocean")) c.biomes.add(id);
+        } else {
+            for (Lexicon.Item it : Lexicon.items()) if (!it.structure() && it.dim == 'O' && !it.id.contains("ocean")) c.biomes.add(it.id);
+        }
+        r.biomes.addAll(c.biomes);
+        return c;
     }
 
     private static Set<String> set(String words) { return new HashSet<>(Arrays.asList(words.split("\\s+"))); }
@@ -353,11 +408,30 @@ public final class Reader {
             if (a != null && b != null && a != b) out.links.add(new Link(a, b, rl.dist, rl.min, rl.text, rl.narrative));
         }
 
+        // 3a. "coordinates next to the village and the river": the spot is anywhere near them, none of them is the spot
+        int firstMention = Integer.MAX_VALUE;
+        for (Claim c : out.claims) if (c.role != Role.ABSENT && c.start >= 0) firstMention = Math.min(firstMention, c.start);
+        boolean anywhere = firstMention != Integer.MAX_VALUE && wantsAnywhere(toks, firstMention);
+        if (anywhere) {
+            for (Claim c : out.claims) if (c.role == Role.TARGET) c.role = Role.NEAR;
+            // "next to the village and the river", "a village and a river within 100 blocks": one closeness for the whole list
+            Claim lead = null;
+            for (Claim c : out.claims) if (c.role == Role.NEAR && c.explicit) { lead = c; break; }
+            if (lead != null) for (Claim c : out.claims) if (c.role == Role.NEAR && !c.explicit) { c.within = lead.within; c.minWithin = lead.minWithin; }
+            out.claims.add(0, anywhereClaim(grid));
+            out.issues.removeIf(iss -> {
+                if (!iss.text.startsWith("I don't know \"")) return false;
+                int q = iss.text.indexOf('"', 14);
+                return q > 14 && HERE_CUES.contains(iss.text.substring(14, q));
+            });
+            out.issues.add(new Issue(Sev.INFO, "The spot is anywhere near everything you named - none of them is the spot itself. To get the coordinates of one of them instead, press \"make this the spot\" on its row.", null, null));
+        }
+
         // 3. choose the target: the one marked, else the first thing named
         int marked = 0;
         Claim first = null;
         for (Claim c : out.claims) if (c.role == Role.TARGET) { marked++; if (first == null) first = c; }
-        if (marked > 1) {
+        if (marked > 1 && !anywhere) {
             boolean firstDone = false;
             for (Claim c : out.claims) if (c.role == Role.TARGET) { if (!firstDone) firstDone = true; else c.role = Role.NEAR; }
             out.issues.add(new Issue(Sev.WARN, "You marked more than one place as the spot. I used the first (" + first.label() + ") and treated the others as things nearby.", null, null));
@@ -376,7 +450,7 @@ public final class Reader {
         for (Claim c : out.claims) if (c.role == Role.TARGET) c.within = 0;
 
         // 4. resolve every claim against what the map actually holds
-        for (Claim c : out.claims) resolve(c, grid, out.issues);
+        for (Claim c : out.claims) if (!c.anywhere) resolve(c, grid, out.issues);
 
         // the target must be searchable; if the first pick is not, hand the role to the next that is
         Claim tgt = null;
@@ -747,7 +821,7 @@ public final class Reader {
     }
 
     static void resolveAll(Reading r, BiomeGrid grid) {
-        for (Claim c : r.claims) resolve(c, grid, r.issues);
+        for (Claim c : r.claims) if (!c.anywhere) resolve(c, grid, r.issues);
     }
 
     private static List<Tok> tokenise(String text) {

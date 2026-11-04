@@ -364,6 +364,63 @@ public final class ReaderTest {
         for (PlaceSearch.Region rg : near.regions) check(Math.abs(rg.nearX) <= 5100 && Math.abs(rg.nearZ) <= 5100, "radius respected");
         check(near.cells < all, "smaller radius, fewer cells");
 
+        // --- "coordinates next to the village and the river": none of them is the spot, the spot is anywhere near all of them
+        {
+            String[] yes = {"I want the coordinates next to the village and the river", "tp me next to the village and the river", "I am standing next to a village and a river",
+                "I want to build near a village and a river", "a place between a village and a river", "coordinates near a desert village and a river"};
+            for (String q : yes) {
+                Reader.Reading aw = Reader.read(q, grid);
+                check(aw.isAnywhere() && aw.target() != null && aw.target().anywhere, "'" + q + "' -> the spot is anywhere near: " + describe(aw));
+                check(aw.claims.size() == 3 && aw.searchable().size() == 3, "'" + q + "' reads two things plus the spot, got " + describe(aw));
+                for (Reader.Claim c : aw.claims) if (!c.anywhere) check(c.role == Reader.Role.NEAR && c.parent == null && c.within > 0, "'" + q + "': " + c.label() + " hangs off the spot");
+            }
+            String[] no = {"searching for a village next to a river", "village next to river", "coordinates of the village next to the river", "i live in a desert next to a village", "I want a village near a river", "looking for a place near a village"};
+            for (String q : no) {
+                Reader.Reading nr = Reader.read(q, grid);
+                check(!nr.isAnywhere() && nr.target() != null && !nr.target().anywhere, "'" + q + "' keeps a named thing as the spot: " + describe(nr));
+            }
+            Reader.Reading aw = Reader.read("coordinates next to the village and the river", grid);
+            Reader.Claim vv = find(aw, "Village"), rr = find(aw, "River");
+            check(vv != null && rr != null && vv.within == 100 && rr.within >= 100 && rr.within <= 128, "one closeness for the list: village " + (vv == null ? -1 : vv.within) + ", river " + (rr == null ? -1 : rr.within));
+            Reader.Reading bw = Reader.read("coordinates next to the forest and the river", grid);
+            long fast = PlaceSearch.run(grid, bw.searchable(), 20000, null).cells;
+            long slow = bruteForce(grid, bw);
+            check(bw.isAnywhere() && fast == slow && fast > 0, "anywhere search matches brute force: " + fast + " vs " + slow);
+            // the spot has to be a place where both are near
+            PlaceSearch.Result ar = PlaceSearch.run(grid, aw.searchable(), 20000, null);
+            check(!ar.regions.isEmpty(), "anywhere search finds places");
+            // buttons: make one of them the spot, then back to anywhere
+            aw.makeSpot(vv);
+            check(!aw.isAnywhere() && aw.target() == vv && aw.claims.size() == 2, "make this the spot removes the anywhere spot");
+            aw.makeAnywhere(grid);
+            check(aw.isAnywhere() && aw.target().anywhere && vv.role == Reader.Role.NEAR, "makeAnywhere puts it back");
+            aw.clearAnywhere();
+            check(!aw.isAnywhere() && aw.target() != null && !aw.target().anywhere, "clearAnywhere gives the spot to a named thing");
+        }
+
+        // --- the search backwards: coordinates in, a description out, and that description finds the coordinates
+        {
+            Random rr = new Random(77);
+            int good = 0, tries = 25;
+            for (int i = 0; i < tries; i++) {
+                int x = rr.nextInt(36000) - 18000, z = rr.nextInt(36000) - 18000;
+                Reverse.Report rep = Reverse.describe(grid, x, z, 20000, null, null);
+                check(rep.ok && rep.includes, "describe " + x + " ~ " + z + " finds the spot: " + rep.text + " / " + rep.note);
+                if (!rep.ok) continue;
+                Reader.Reading back = Reader.read(rep.text, grid);
+                check(!back.hasError() && back.target() != null && back.target().label().equalsIgnoreCase(rep.spotName), "the text reads back with the spot biome first: " + rep.text);
+                PlaceSearch.Result pr = PlaceSearch.run(grid, back.searchable(), 20000, null);
+                check(pr.contains(grid, x, z), "pasting the text into the search finds " + x + " ~ " + z);
+                check(pr.regions.size() == rep.places, "the number of places matches what was reported: " + pr.regions.size() + " vs " + rep.places);
+                for (Reader.Claim c : back.claims) check(c.searchable(), "every part of the text is understood: " + c.label());
+                if (rep.places == 1) good++;
+            }
+            System.out.println("describe-backwards: " + good + " of " + tries + " pinned to a single place");
+            check(good >= tries / 4, "at least a quarter of the spots could be pinned to one place, got " + good);
+            Reverse.Report off = Reverse.describe(grid, 90000, 90000, 20000, null, null);
+            check(!off.ok && !off.note.isEmpty(), "coordinates off the map are refused politely");
+        }
+
         System.out.println(checks + " checks, " + fails + " failed");
         System.exit(fails == 0 ? 0 : 1);
     }

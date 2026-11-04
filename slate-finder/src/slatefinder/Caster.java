@@ -41,23 +41,34 @@ final class Caster {
     private static int scale(int c, double f) { return rgb((int) (((c >> 16) & 255) * f), (int) (((c >> 8) & 255) * f), (int) ((c & 255) * f)); }
     private static double lum(int c) { return 0.3 * ((c >> 16) & 255) + 0.59 * ((c >> 8) & 255) + 0.11 * (c & 255); }
 
-    private static boolean tinted(byte b) {
+    private boolean tinted(byte b) {
+        if (world.exactTextures && (b == Blocks3D.BIRCH_LEAVES || b == Blocks3D.SPRUCE_LEAVES)) return true;
         return b == Blocks3D.GRASS || b == Blocks3D.GRASS_TALL || b == Blocks3D.OAK_LEAVES || b == Blocks3D.JUNGLE_LEAVES || b == Blocks3D.ACACIA_LEAVES || b == Blocks3D.DARK_LEAVES || b == Blocks3D.MANGROVE_LEAVES || b == Blocks3D.MOSS;
     }
 
     private static int applyTint(int tex, int tint, byte b) {
+        int bi = b & 255;
         int r = (tex >> 16) & 255, g = (tex >> 8) & 255, bl = tex & 255;
         if (g < r * 1.05 || g < bl * 1.25) return tex;                       // not a green pixel: leave it
-        double f = lum(tex) / Math.max(40, lum(Blocks3D.AVG[b]));
+        double f = lum(tex) / Math.max(40, lum(Blocks3D.AVG[bi]));
         return scale(tint, f);
     }
 
     /** The colour of a block's texel. */
-    private static int texel(byte b, int face, double fu, double fv, int tint) {
-        int[] t = face == 0 ? Blocks3D.TOP[b] : Blocks3D.SIDE[b];
+    private int texel(byte b, int face, double fu, double fv, int tint) {
+        int bi = b & 255;
+        int[] t = world.exactTextures ? RealTextures.pick(bi, face == 0) : null;
+        boolean real = t != null;
+        if (t == null) t = face == 0 ? Blocks3D.TOP[bi] : Blocks3D.SIDE[bi];
+        if (t == null) t = Blocks3D.TOP[Blocks3D.STONE];
         int c = t[((int) (fv * 16) & 15) * 16 + ((int) (fu * 16) & 15)];
-        if (tint != 0 && tinted(b)) c = applyTint(c, tint, b);
+        if (tint != 0 && tinted(b)) c = real ? multiply(c, tint) : applyTint(c, tint, b);
         return c;
+    }
+
+    /** The game's own leaf and grass pictures are grey and get their colour from the biome: multiply. */
+    private static int multiply(int c, int tint) {
+        return rgb((((c >> 16) & 255) * ((tint >> 16) & 255)) / 255, (((c >> 8) & 255) * ((tint >> 8) & 255)) / 255, ((c & 255) * (tint & 255)) / 255);
     }
 
     // ------------------------------------------------------------------ the sky
@@ -181,7 +192,8 @@ final class Caster {
         else if (face == 1) { fu = pz - Math.floor(pz); fv = 1 - (py - Math.floor(py - 1e-6)); nx = -hit[7]; }
         else { fu = px - Math.floor(px); fv = 1 - (py - Math.floor(py - 1e-6)); nz = -hit[7]; }
         if (fv >= 1) fv = 0.999;
-        int tint = (b == Blocks3D.GRASS || b == Blocks3D.GRASS_TALL || b == Blocks3D.MOSS) ? (int) hit[10] : (Blocks3D.leaf(b) && b != Blocks3D.BIRCH_LEAVES && b != Blocks3D.SPRUCE_LEAVES && b != Blocks3D.CHERRY_LEAVES && b != Blocks3D.PALE_LEAVES && b != Blocks3D.LEAF_FLOWER) ? (int) hit[11] : 0;
+        int tint = (b == Blocks3D.GRASS || b == Blocks3D.GRASS_TALL || (b == Blocks3D.MOSS && !world.exactTextures)) ? (int) hit[10] : (Blocks3D.leaf(b) && b != Blocks3D.BIRCH_LEAVES && b != Blocks3D.SPRUCE_LEAVES && b != Blocks3D.CHERRY_LEAVES && b != Blocks3D.PALE_LEAVES && b != Blocks3D.LEAF_FLOWER) ? (int) hit[11] : 0;
+        if (world.exactTextures) { if (b == Blocks3D.BIRCH_LEAVES) tint = 0xFF80A755; else if (b == Blocks3D.SPRUCE_LEAVES) tint = 0xFF619961; }
         int col = texel(b, face == 3 ? 0 : face, fu, fv, tint);
         double dot = Math.max(0, nx * sx + ny * sy + nz * sz);
         double light = 0.40 + 0.62 * dot;
@@ -294,6 +306,15 @@ final class Caster {
         });
     }
 
+    private int avgColour(byte b, int tint) {
+        int bi = b & 255;
+        if (world.exactTextures) {
+            int a = RealTextures.avg(bi);
+            if (a != 0) return tint != 0 && tinted(b) ? multiply(a, tint) : a;
+        }
+        return tint != 0 && tinted(b) ? applyTint(Blocks3D.AVG[bi], tint, b) : Blocks3D.AVG[bi];
+    }
+
     private int closeColour(double wx, double wz, double bpp, Opts o) {
         int x = (int) Math.floor(wx), z = (int) Math.floor(wz);
         Terrain.Chunk ch = world.chunk(x >> 4, z >> 4);
@@ -301,7 +322,7 @@ final class Caster {
         byte b = ch.faceTop[idx];
         double fu = wx - x, fv = wz - z;
         int tint = (b == Blocks3D.GRASS || b == Blocks3D.GRASS_TALL || b == Blocks3D.MOSS) ? world.grassTint(ch, idx) : Blocks3D.leaf(b) ? world.foliageTint(ch, idx) : 0;
-        int col = bpp < 0.6 ? texel(b, 0, fu, fv, tint) : (tint != 0 && tinted(b) ? applyTint(Blocks3D.AVG[b], tint, b) : Blocks3D.AVG[b]);
+        int col = bpp < 0.6 ? texel(b, 0, fu, fv, tint) : avgColour(b, tint);
         int h = ch.h[idx];
         int hE = world.topAt(x + 1, z), hS = world.topAt(x, z + 1), hW = world.topAt(x - 1, z), hN = world.topAt(x, z - 1);
         double slope = ((hW - hE) * 0.5 + (hN - hS) * 0.5) * 0.045;

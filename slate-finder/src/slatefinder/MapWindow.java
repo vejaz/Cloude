@@ -31,6 +31,8 @@ final class MapWindow extends JFrame {
     private Ui.Seg modeSeg;
     private List<PlaceSearch.Witness> witnesses = new ArrayList<>();
     private final Component owner;
+    private ExactCard exactCard;
+    private JLabel aboutLabel;
 
     static MapWindow open(Component parent, BiomeGrid grid, Reader.Reading reading, int x, int z) {
         MapWindow w = new MapWindow(parent, grid, reading, x, z);
@@ -91,7 +93,7 @@ final class MapWindow extends JFrame {
         setSize(Math.min(scr.width - 60, 1500), Math.min(scr.height - 80, 900));
         setLocationRelativeTo(parent);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-        addWindowListener(new WindowAdapter() { public void windowClosed(WindowEvent e) { view.dispose(); } });
+        addWindowListener(new WindowAdapter() { public void windowClosed(WindowEvent e) { view.dispose(); if (exactCard != null) exactCard.stopWork(); } });
         getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "close");
         getRootPane().getActionMap().put("close", new AbstractAction() { public void actionPerformed(ActionEvent e) { dispose(); } });
 
@@ -100,6 +102,7 @@ final class MapWindow extends JFrame {
         else if (mode.equals("map")) { view.setMode(WorldView.Mode.MAP); modeSeg.setIndex(2); }
         view.render();
 
+        exactCard.autoOpen();
         Thread t = new Thread(this::findWitnesses, "map-witnesses");
         t.setDaemon(true);
         t.start();
@@ -208,6 +211,9 @@ final class MapWindow extends JFrame {
         return wrap;
     }
 
+    ExactCard exactCard() { return exactCard; }
+    WorldView worldView() { return view; }
+
     /** For tests: switches the view (0 3D, 1 stand there, 2 top-down). */
     void setMode(int i) { view.setMode(i == 0 ? WorldView.Mode.ORBIT : i == 1 ? WorldView.Mode.WALK : WorldView.Mode.MAP); modeSeg.setIndex(i); view.render(); }
 
@@ -294,6 +300,12 @@ final class MapWindow extends JFrame {
     private JComponent side() {
         JPanel col = new DescribePanel.Column();
 
+        exactCard = new ExactCard(owner, grid, world, view, spotX, spotZ, html -> SwingUtilities.invokeLater(() -> {
+            if (aboutLabel != null) aboutLabel.setText("<html><body style='width:270px'>" + html + "</body></html>");
+        }));
+        col.add(exactCard);
+        col.add(Box.createVerticalStrut(10));
+
         Theme.Card c1 = new Theme.Card("Your description here", new BorderLayout());
         c1.setAlignmentX(Component.LEFT_ALIGNMENT);
         JPanel in1 = new JPanel();
@@ -368,7 +380,7 @@ final class MapWindow extends JFrame {
 
         Theme.Card c5 = new Theme.Card("About this view", new BorderLayout());
         c5.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel about = new JLabel("<html><body style='width:270px'>The <b>biomes</b> and the <b>positions of villages</b> are real, from your biome map (one sample every " + grid.step + " blocks). "
+        JLabel about = aboutLabel = new JLabel("<html><body style='width:270px'>The <b>biomes</b> and the <b>positions of villages</b> are real, from your biome map (one sample every " + grid.step + " blocks). "
             + "Everything finer than that - the exact hills, where each tree stands, the shape of a house - is generated to look right. "
             + "It is a faithful picture of the <i>place</i>, not a copy of the blocks in your game.</body></html>");
         about.setFont(Theme.SMALL);

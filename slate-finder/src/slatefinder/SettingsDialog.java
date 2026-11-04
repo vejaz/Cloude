@@ -92,8 +92,34 @@ final class SettingsDialog extends JDialog {
         col.add(pics);
         col.add(Box.createVerticalStrut(14));
 
+        // ------------------------------------------------------------ the exact world and the disk
+        Theme.Card exact = card("Exact world");
+        JPanel in5 = stack();
+        in5.add(new Ui.Toggle("Open a saved exact place automatically", Settings.getBool("exactAuto", true), v -> Settings.set("exactAuto", v)));
+        in5.add(Box.createVerticalStrut(6));
+        in5.add(Theme.label("How much around the spot is made exact", Theme.UI, Theme.MUTED));
+        in5.add(Box.createVerticalStrut(8));
+        int[] radii = {160, 288, 448};
+        int ri = 1;
+        for (int i = 0; i < radii.length; i++) if (Math.abs(radii[i] - ExactJob.radius()) < Math.abs(radii[ri] - ExactJob.radius())) ri = i;
+        in5.add(new Ui.Seg(new String[]{"Small", "Normal", "Large"}, ri, i -> Settings.set("exactRadius", radii[i])));
+        JLabel rn = new JLabel("<html><body style='width:300px'>Small is about 320 blocks across and takes a minute or two; Large is about 900 blocks across and takes much longer and more disk.</body></html>");
+        rn.setFont(Theme.SMALL);
+        rn.setForeground(Theme.DIM);
+        rn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        in5.add(Box.createVerticalStrut(6));
+        in5.add(rn);
+        exact.add(in5, BorderLayout.CENTER);
+        col.add(exact);
+        col.add(Box.createVerticalStrut(10));
+
+        Theme.Card disk = card("Storage for the maps");
+        disk.add(new StoragePanel(this), BorderLayout.CENTER);
+        col.add(disk);
+        col.add(Box.createVerticalStrut(14));
+
         Theme.Btn reset = new Theme.Btn("Put everything back to normal", false).on(() -> {
-            for (String k : new String[]{"accent", "cardSize", "animations", "tips", "player", "mapMode", "sun", "distance", "detail", "shadows", "ao", "showSites", "pics3d"}) Settings.set(k, defaults(k));
+            for (String k : new String[]{"accent", "cardSize", "animations", "tips", "player", "mapMode", "sun", "distance", "detail", "shadows", "ao", "showSites", "pics3d", "exactAuto", "exactRadius"}) Settings.set(k, defaults(k));
             dispose();
         });
         reset.setPreferredSize(new Dimension(100, 34));
@@ -110,7 +136,7 @@ final class SettingsDialog extends JDialog {
         sp.getVerticalScrollBar().setUnitIncrement(18);
         setContentPane(sp);
         sp.setBackground(Theme.BG);
-        setSize(440, 760);
+        setSize(460, 860);
         setLocationRelativeTo(parent);
         getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "close");
         getRootPane().getActionMap().put("close", new AbstractAction() { public void actionPerformed(java.awt.event.ActionEvent e) { dispose(); } });
@@ -119,7 +145,7 @@ final class SettingsDialog extends JDialog {
     private static String defaults(String k) {
         switch (k) {
             case "accent": return "Cyan"; case "cardSize": return "medium"; case "player": return "vejasss"; case "mapMode": return "3d";
-            case "sun": return "52"; case "distance": return "520"; case "detail": return "2";
+            case "sun": return "52"; case "distance": return "520"; case "detail": return "2"; case "exactRadius": return "288";
             default: return "true";
         }
     }

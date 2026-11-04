@@ -184,8 +184,8 @@ final class Terrain {
     // ------------------------------------------------------------------ the world
 
     final Biomes src;
-    final String[] names;
-    final Style[] styles;
+    String[] names;
+    Style[] styles;
     final int seed;
     private final ConcurrentHashMap<Long, Chunk> chunks = new ConcurrentHashMap<>();
     /** Things a scene places by hand: animals, a single building. {stamp, x, z} */
@@ -193,6 +193,31 @@ final class Terrain {
     private final Map<Long, List<Site>> siteBuckets = new HashMap<>();
     private final Map<Site, Layout> layouts = new ConcurrentHashMap<>();
     int cell;
+
+    /** Real blocks for part of the world, read from the game's own world files. */
+    interface ExactSource { Chunk chunk(int cx, int cz); }
+
+    ExactSource exact;
+    /** True while real blocks are attached: the renderer then uses the game's own textures, and heights are shown as in the game. */
+    boolean exactTextures;
+    int yShift;
+
+    /** Switches on the real blocks around the place; the rest stays as generated. */
+    void attach(ExactSource src) {
+        exact = src;
+        exactTextures = src != null;
+        yShift = src != null ? 1 : 0;
+        clear();
+    }
+
+    synchronized int styleIndex(String id) {
+        for (int i = 0; i < names.length; i++) if (names[i].equals(id)) return i;
+        names = java.util.Arrays.copyOf(names, names.length + 1);
+        names[names.length - 1] = id;
+        styles = java.util.Arrays.copyOf(styles, styles.length + 1);
+        styles[styles.length - 1] = style(id);
+        return names.length - 1;
+    }
 
     Terrain(Biomes src, int seed) {
         this.src = src;
@@ -224,7 +249,8 @@ final class Terrain {
     // ------------------------------------------------------------------ columns
 
     static final class Chunk {
-        final short[] ter = new short[256], h = new short[256], gy = new short[256], stamp = new short[256];
+        final short[] ter = new short[256], h = new short[256], gy = new short[256];
+        final int[] stamp = new int[256];
         final byte[] top = new byte[256], sub = new byte[256], under = new byte[256], faceTop = new byte[256], biome = new byte[256], sx = new byte[256], sz = new byte[256], flags = new byte[256];
     }
 
@@ -234,7 +260,9 @@ final class Terrain {
         long key = ((long) cx << 32) ^ (cz & 0xFFFFFFFFL);
         Chunk c = chunks.get(key);
         if (c == null) {
-            c = generate(cx, cz);
+            ExactSource ex = exact;
+            if (ex != null) c = ex.chunk(cx, cz);
+            if (c == null) c = generate(cx, cz);
             if (chunks.size() > 30000) chunks.clear();
             chunks.put(key, c);
         }
@@ -347,7 +375,7 @@ final class Terrain {
             if (t >= 0 && s.w == 1 && s.d == 1 && s.h == 1 && Blocks3D.plant(s.at(0, 0, 0))) {
                 c.faceTop[i] = s.at(0, 0, 0);        // flowers and grass are colour on the ground, not blocks
             } else if (t >= 0) {
-                c.stamp[i] = (short) f[0];
+                c.stamp[i] = f[0];
                 c.sx[i] = (byte) f[1]; c.sz[i] = (byte) f[2]; c.gy[i] = (short) f[3];
                 int hh = f[3] + t + 1;
                 if (hh > finalH) { finalH = hh; c.faceTop[i] = s.at(f[1], t, f[2]); }
@@ -514,7 +542,7 @@ final class Terrain {
         if (y >= ter - 1) return c.top[i];
         if (y >= ter - 4) return c.sub[i];
         byte u = c.under[i];
-        if (u == Blocks3D.TERRA) return (byte) (Blocks3D.TERRA + ((y * 5 / 3) & 7));
+        if (u == Blocks3D.TERRA && !exactTextures) return (byte) (Blocks3D.TERRA + ((y * 5 / 3) & 7));
         return u;
     }
 
@@ -531,7 +559,7 @@ final class Terrain {
         if (y >= ter - 1) return c.top[i];
         if (y >= ter - 4) return c.sub[i];
         byte u = c.under[i];
-        if (u == Blocks3D.TERRA) return (byte) (Blocks3D.TERRA + ((y * 5 / 3) & 7));
+        if (u == Blocks3D.TERRA && !exactTextures) return (byte) (Blocks3D.TERRA + ((y * 5 / 3) & 7));
         return u;
     }
 
@@ -540,7 +568,11 @@ final class Terrain {
     int foliageTint(Chunk c, int i) { return styles[c.biome[i]].foliage; }
     int waterTint(Chunk c, int i) { return styles[c.biome[i]].water; }
 
-    String biomeName(int x, int z) { return names[biomeIndexAt(x, z)]; }
+    String biomeName(int x, int z) {
+        Chunk c = chunk(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+        int b = c.biome[Math.floorMod(z, 16) * 16 + Math.floorMod(x, 16)];
+        return names[b >= 0 && b < names.length ? b : 0];
+    }
 
     /** The height of the top of the column at (x, z). */
     int topAt(int x, int z) {

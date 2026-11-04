@@ -44,7 +44,10 @@ public final class DescribePanel extends JPanel {
     private Reader.Reading reading = new Reader.Reading();
     /** What was changed by hand in the "What I understood" rows; kept while the sentence is edited around it. */
     private final Map<String, int[]> distEdits = new LinkedHashMap<>();
+    private ReverseDialog reverseDlg;
     private String spotKey;
+    /** null: as the sentence reads; TRUE: the spot is anywhere near everything; FALSE: one of the named things is the spot. */
+    private Boolean anywhereOverride;
     private final Viewer viewer;
     private final BookGrid book = new BookGrid();
     private final PlainField bookSearch = new PlainField("Search every biome and structure…");
@@ -390,11 +393,23 @@ public final class DescribePanel extends JPanel {
             filterPills.add(p);
             pillsPanel.add(p);
         }
+        Pill rev = new Pill("Test coordinates", Theme.MUTED, false);
+        rev.setToolTipText("Type coordinates and see what you could have described to get exactly that spot");
+        rev.onClick(this::openReverse);
+        pillsPanel.add(rev);
         Pill gear = new Pill("\u2699  Settings", Theme.MUTED, false);
         gear.onClick(() -> { SettingsDialog dlg = new SettingsDialog(this); dlg.setVisible(true); });
         pillsPanel.add(gear);
         pillsPanel.revalidate();
         pillsPanel.repaint();
+    }
+
+    /** The "Test coordinates" window. */
+    ReverseDialog openReverse() {
+        if (reverseDlg != null && reverseDlg.isDisplayable()) { reverseDlg.toFront(); return reverseDlg; }
+        reverseDlg = new ReverseDialog(this, grid, this::radius, s -> text.setText(s));
+        reverseDlg.setVisible(true);
+        return reverseDlg;
     }
 
     /** Called when a setting changes: redraw everything that uses the accent colour or the picture size. */
@@ -487,7 +502,7 @@ public final class DescribePanel extends JPanel {
 
     private void refreshReading() {
         reading = Reader.read(text.getText(), grid);
-        if (text.getText().isBlank()) { distEdits.clear(); spotKey = null; }
+        if (text.getText().isBlank()) { distEdits.clear(); spotKey = null; anywhereOverride = null; }
         applyEdits();
         showReading();
     }
@@ -505,7 +520,9 @@ public final class DescribePanel extends JPanel {
     }
 
     private void applyEdits() {
-        if (spotKey != null) {
+        if (Boolean.TRUE.equals(anywhereOverride) && !reading.isAnywhere()) reading.makeAnywhere(grid);
+        else if (Boolean.FALSE.equals(anywhereOverride) && reading.isAnywhere()) reading.clearAnywhere();
+        if (spotKey != null && !reading.isAnywhere()) {
             Reader.Claim c = byKey(spotKey);
             if (c != null && c.searchable() && c.role != Reader.Role.TARGET) reading.makeSpot(c);
         }
@@ -531,7 +548,18 @@ public final class DescribePanel extends JPanel {
     /** Called when a row's "make this the spot" is pressed. */
     void chooseSpot(Reader.Claim c) {
         spotKey = keyOf(c);
+        anywhereOverride = Boolean.FALSE;
         reading.makeSpot(c);
+        showReading();
+        liveCount();
+    }
+
+    /** The "anywhere near all of these" switch under the rows. */
+    private void toggleAnywhere() {
+        boolean now = reading.isAnywhere();
+        anywhereOverride = now ? Boolean.FALSE : Boolean.TRUE;
+        spotKey = null;
+        if (now) reading.clearAnywhere(); else reading.makeAnywhere(grid);
         showReading();
         liveCount();
     }
@@ -539,6 +567,7 @@ public final class DescribePanel extends JPanel {
     private void resetEdits() {
         distEdits.clear();
         spotKey = null;
+        anywhereOverride = null;
         refreshReading();
         liveCount();
     }
@@ -550,12 +579,28 @@ public final class DescribePanel extends JPanel {
             readingBox.add(wrapLabel("Nothing yet. Name the places you can see - biomes and structures - and say how close they are. Everything it understands shows up here.", Theme.UI, Theme.DIM, LEFT_W - 60));
         } else {
             if (!reading.claims.isEmpty()) {
-                readingBox.add(wrapLabel("Click a distance to change it. Press \u201cmake this the spot\u201d on any row to get the coordinates of that one instead.", Theme.SMALL, Theme.DIM, LEFT_W - 60));
+                readingBox.add(wrapLabel("Click a distance to change it. Press \u201cmake this the spot\u201d on any row to get the coordinates of that one instead, or ask for coordinates anywhere near all of them.", Theme.SMALL, Theme.DIM, LEFT_W - 60));
                 readingBox.add(Box.createVerticalStrut(8));
             }
             for (Reader.Claim c : reading.claims) readingBox.add(claimRow(c));
             if (reading.claims.isEmpty()) readingBox.add(wrapLabel("Nothing recognised yet.", Theme.UI, Theme.DIM, LEFT_W - 60));
-            if (!distEdits.isEmpty() || spotKey != null) {
+            int named = 0;
+            for (Reader.Claim c : reading.claims) if (!c.anywhere && c.role != Reader.Role.ABSENT && c.searchable()) named++;
+            if (named >= 1) {
+                JPanel ap = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+                ap.setOpaque(false);
+                ap.setAlignmentX(Component.LEFT_ALIGNMENT);
+                boolean on = reading.isAnywhere();
+                Pill any = new Pill(on ? "\u2713  the spot is anywhere near all of these  \u2014  click to undo" : "or: the spot can be anywhere near all of these", Skin.accent(), false);
+                if (on) any.setActive(true);
+                any.setToolTipText("None of them is the spot: give me coordinates next to all of them. You can also write \u201ccoordinates next to the village and the river\u201d.");
+                any.onClick(this::toggleAnywhere);
+                ap.add(any);
+                readingBox.add(Box.createVerticalStrut(2));
+                readingBox.add(ap);
+                readingBox.add(Box.createVerticalStrut(6));
+            }
+            if (!distEdits.isEmpty() || spotKey != null || anywhereOverride != null) {
                 JPanel rp = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
                 rp.setOpaque(false);
                 rp.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -573,7 +618,7 @@ public final class DescribePanel extends JPanel {
                 sep.setAlignmentX(Component.LEFT_ALIGNMENT);
                 notesBox.add(sep);
                 notesBox.add(Box.createVerticalStrut(6));
-                for (Reader.Issue i : reading.issues) { if (spotKey != null && i.text.startsWith("Finding ")) continue; notesBox.add(issueRow(i)); }
+                for (Reader.Issue i : reading.issues) { if ((spotKey != null || anywhereOverride != null) && i.text.startsWith("Finding ")) continue; notesBox.add(issueRow(i)); }
             }
         }
         readingBox.revalidate();

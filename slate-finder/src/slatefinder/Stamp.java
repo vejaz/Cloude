@@ -10,7 +10,7 @@ import java.util.Random;
  */
 final class Stamp {
     private static final List<Stamp> ALL = new ArrayList<>();
-    private static volatile Stamp[] TABLE = new Stamp[0];
+    private static volatile Stamp[] TABLE = new Stamp[256];
 
     final int id, w, d, h;
     final byte[] v;
@@ -20,7 +20,14 @@ final class Stamp {
     Stamp(int w, int d, int h, int ax, int az) {
         this.w = w; this.d = d; this.h = h; this.ax = ax; this.az = az;
         this.v = new byte[w * d * h];
-        synchronized (ALL) { this.id = ALL.size(); ALL.add(this); TABLE = ALL.toArray(new Stamp[0]); }
+        synchronized (ALL) {
+            this.id = ALL.size();
+            ALL.add(this);
+            Stamp[] t = TABLE;
+            if (id >= t.length) t = java.util.Arrays.copyOf(t, t.length * 2);
+            t[id] = this;
+            TABLE = t;
+        }
     }
 
     static Stamp get(int id) { return TABLE[id]; }

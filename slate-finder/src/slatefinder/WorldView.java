@@ -105,7 +105,11 @@ final class WorldView extends JComponent {
 
     // ------------------------------------------------------------------ the camera
 
-    private double groundHere() { return world.topAt((int) Math.floor(wx), (int) Math.floor(wz)); }
+    /** Where the feet go: the ground itself in the real world (so you can walk under a roof or between trees), the top of anything on it otherwise. */
+    private double groundHere() {
+        int x = (int) Math.floor(wx), z = (int) Math.floor(wz);
+        return world.exactTextures ? world.groundAt(x, z) : world.topAt(x, z);
+    }
 
     Caster.Cam cam() {
         Caster.Cam c = new Caster.Cam();

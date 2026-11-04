@@ -5,12 +5,45 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-171036.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-212213.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
 
-## Latest update (maps, 3D pictures, settings)
+## Latest update (exact world, anywhere-spot, test coordinates, storage)
+
+- **Exact world.** In "See map" there is a new **Exact world** box. Press **Make it exact** and the map around the coordinates
+  becomes the real blocks of your world: the app uses the seed from your biome map and has the game's own world generator
+  (Minecraft 1.21.11) make that area, then reads every block, tree, house and plant and draws it with the game's own textures.
+  You can turn it, walk through it (even into a village house), see it from above. "Show the exact blocks" switches back to the
+  generated picture. How it works, step by step:
+  1. It asks once (you agree to Minecraft's EULA) before downloading the game's server (about 56 MB, from Mojang) into
+     `%APPDATA%\SlateFinder\exact\server`.
+  2. It runs that server quietly on this computer, reachable only from this computer, with your seed, and asks it to load the area.
+     Java 21 (the one this app already runs on) is used. About 1,400 chunks (a 600 x 600 block area) take a few minutes.
+  3. It reads the finished chunks, keeps a small copy (a few MB) in `%APPDATA%\SlateFinder\exact\places`, and deletes the big
+     world files. The next time you open the same spot it opens at once, with no server.
+  - The game's pictures are read from your own Minecraft jar (`.minecraft\versions\1.21.11`); if it is not found the app's own
+    painted textures are used. Nothing from the game is copied into this app.
+  - It is the **natural world only**: what players built on a server is not in the seed. The seed and version must match the
+    world you are looking at.
+  - Past the edge of the exact area the picture is still the generated one, and the window says so.
+- **Storage you control.** Settings > Storage for the maps shows `used of limit` (default 10 GB) with a bar and a breakdown, lets
+  you change the limit (1 to 200 GB), **Delete the memory of the maps** (saved places and the 3D pictures of the book), remove
+  the downloaded server, and open the folder. When the limit is reached the places you looked at longest ago are deleted first.
+  If a new place would not fit it tells you and generates nothing. Settings > Exact world: how big an area (small / normal /
+  large) and whether saved places open by themselves.
+- **Say where you want the coordinates.** "I want the coordinates next to the village and the river" (also: "tp me near...",
+  "I am standing next to...", "a place between a village and a river", "I want to build near...") makes the spot *anywhere near all
+  of them*, none of them is the spot. One closeness is shared by the list ("next to the village and the river"). There is also a
+  button under the rows: "the spot can be anywhere near all of these", and "make this the spot" still works on any row.
+- **Test coordinates.** The new "Test coordinates" button (next to Settings) takes X and Z, looks around them on your biome map and
+  writes what you could have described to get exactly that place, for example `searching for the swamp, the warm ocean within 800
+  blocks, the snowy slopes within 2000 blocks, ...`. Every description is read and searched for real before it is shown, so pasting
+  it into the search finds the same spot. It says how many places fit it (often one) and has "Copy the text" and "Use it in the
+  search".
+
+## Earlier update (maps, 3D pictures, settings)
 
 - **See map.** Every place that is found has a "See map" button next to its coordinates. It opens a window with the place drawn
   around the coordinates in 3D, with a pin on the spot and a pin for every biome and structure you described, found near it, joined
@@ -87,6 +120,9 @@ To go back, delete that one jar. Your older builds are untouched.
   If you generate `<structure>s.txt` files in the same format as `villages.txt` they are used automatically.
 - Nether and End biomes are recognised if typed, but your map covers the overworld only, so they are reported rather than searched.
 - Built and tested here on a made-up biome map, not your seed. The real `biome-grid-64.bin` is read by the same code as before.
+- **The exact world was tested against a made-up world written in the game's own file format and a stand-in for the server.** The step
+  that starts Mojang's real server could not be run where this was built, so the first run on your computer is the real test. If it
+  fails the box shows why (with the server's last lines); the generated map keeps working either way.
 
 ## For the source
 
@@ -97,5 +133,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (1,000 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (1,056 checks), `World3DTest` (227), `ExactTest` (66: reads a made-up world written in the game's file format, and runs a stand-in for the game's server), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

@@ -33,6 +33,16 @@ public final class PlaceSearch {
         public boolean cancelled;
         public boolean truncated;
         public int step;
+        /** Which map cells matched (kept so a coordinate can be asked about), and where that window starts. */
+        byte[] mask;
+        int c0, w;
+
+        /** Whether the map cell holding this coordinate matched the description. */
+        public boolean contains(BiomeGrid grid, int x, int z) {
+            if (mask == null) return false;
+            int col = grid.col(x) - c0, row = grid.col(z) - c0;
+            return grid.col(x) >= 0 && grid.col(z) >= 0 && col >= 0 && row >= 0 && col < w && row * w + col < mask.length && mask[row * w + col] != 0;
+        }
     }
 
     // ------------------------------------------------------------------ position lists
@@ -164,6 +174,9 @@ public final class PlaceSearch {
 
         // group what is left into regions
         res.cells = count(pass);
+        res.mask = pass.clone();
+        res.c0 = c0;
+        res.w = w;
         boolean[] trunc = new boolean[1];
         res.regions.addAll(regions(grid, pass, w, c0, exact, cancel, trunc));
         res.truncated = trunc[0];
