@@ -5,15 +5,28 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-122833.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-125438.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
 
-## What is new
+## Latest update
 
-- **Understands every biome and structure** (66 biomes: overworld, caves, Nether, End; 23 structures) and the
-  words people use for them: `planes`, `grassland`, `snowy mountains`, `mesa`, `sakura`, `witch hut`, `coral reef`...
+- **The number of places is next to the text box**, with the FIND IT button beside it, so nothing needs scrolling.
+- **Exactly what you say.** `ocean` is the ocean only; `warm ocean`, `lukewarm ocean`, `cold ocean`, `frozen ocean`, `deep ocean`
+  are each their own. Same for `plains` / `sunflower plains`, `forest` / `birch forest`, `river` / `frozen river`, and so on.
+  The old map code treated `ocean` as every ocean; that is fixed. Say `any ocean`, `all forests` or `every taiga` for the whole family.
+- **Specific structures**: `plains village`, `desert village`, `savanna village`, `snowy village`, `taiga village`,
+  `warm ocean ruins`, `cold ocean ruins`, `beached shipwreck`, `ocean shipwreck`. With a village list they are cut to the biome
+  the village really sits in, so they are exact.
+- **Comma lists and typos**: `plains vilage, plais biome` reads as a plains village and the plains biome.
+- **The book lists only what can be searched**: overworld biomes your map holds, and structures that are exact or can be found by
+  biome. Nether, End and anywhere-underground structures are gone from the list (they are still explained if you type them).
+- The "Try" examples are removed.
+
+## What the tab does
+
+- **Understands every overworld biome and structure** and the words people use for them: `planes`, `grassland`, `snowy mountains`, `mesa`, `sakura`, `witch hut`, `coral reef`...
   A word can mean a whole family (`mountains` = every peak, slope and windswept hill; `forest`, `taiga`, `ocean`, `river`).
 - **Reads a whole sentence**: which place is "the spot", what is near it and how far (`right next to`, `a bit further`,
   `800 blocks`, `1.5k`), and what is absent (`no desert, ocean or jungle`).
@@ -33,7 +46,7 @@ To go back, delete that one jar. Your older builds are untouched.
   tab searches the biomes they generate in and labels the result "by biome". Structures that appear everywhere underground
   (mineshaft, stronghold, trial chambers, dungeons, geodes) cannot be placed from a biome map, and it says so.
   If you generate `<structure>s.txt` files in the same format as `villages.txt` they are used automatically.
-- Nether and End biomes are understood, but your map covers the overworld only, so they are reported rather than searched.
+- Nether and End biomes are recognised if typed, but your map covers the overworld only, so they are reported rather than searched.
 - Built and tested here on a made-up biome map, not your seed. The real `biome-grid-64.bin` is read by the same code as before.
 
 ## For the source
@@ -45,5 +58,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (554 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (679 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

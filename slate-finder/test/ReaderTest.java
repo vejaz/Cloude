@@ -34,7 +34,7 @@ public final class ReaderTest {
         check(r.target() != null && r.target().label().equals("Plains"), "plains is the target");
         check(find(r, "Village") != null, "village understood");
         check(find(r, "Snowy mountains") != null, "snowy mountains understood");
-        check(find(r, "River (any)") != null, "river understood");
+        check(find(r, "River") != null, "river understood");
         check(r.claims.size() == 4, "exactly four things read, got " + r.claims.size());
 
         // --- misspelling
@@ -43,7 +43,7 @@ public final class ReaderTest {
         check(r.target() != null && r.target().label().equals("Plains"), "planes -> plains");
         check(find(r, "Village") != null, "vilage -> village");
         check(find(r, "Snowy mountains") != null, "snowy mountians -> snowy mountains");
-        check(find(r, "River (any)") != null, "riber -> river");
+        check(find(r, "River") != null, "riber -> river");
 
         // --- near-misses that must NOT be "corrected" into biomes
         for (String ok : new String[]{"I plan to build a house", "the tail of a dog", "a stone road with a wall"}) {
@@ -57,18 +57,60 @@ public final class ReaderTest {
         r = Reader.read("I am standing in a desert with no ocean and no jungle, a river right next to me and mountains far away", grid);
         System.out.println(describe(r));
         check(r.target() != null && r.target().label().equals("Desert"), "marked target is desert");
-        Reader.Claim oc = find(r, "Ocean (any)"), jg = find(r, "Jungle");
+        Reader.Claim oc = find(r, "Ocean"), jg = find(r, "Jungle");
         check(oc != null && oc.role == Reader.Role.ABSENT, "ocean absent");
         check(jg != null && jg.role == Reader.Role.ABSENT, "jungle absent (list carries the no)");
-        Reader.Claim rv = find(r, "River (any)"), mt = find(r, "Mountains");
+        Reader.Claim rv = find(r, "River"), mt = find(r, "Mountains");
         check(rv != null && rv.role == Reader.Role.NEAR && rv.within >= 100 && rv.within <= 128, "river right next to ~100, got " + (rv == null ? -1 : rv.within));
         check(mt != null && mt.role == Reader.Role.NEAR && mt.within == 2000, "mountains far away = 2000, got " + (mt == null ? -1 : mt.within));
+
+        // --- exactly what was said, nothing broader
+        String[][] exact = {
+            {"ocean", "Ocean", "ocean"}, {"warm ocean", "Warm Ocean", "warm_ocean"}, {"lukewarm ocean", "Lukewarm Ocean", "lukewarm_ocean"}, {"cold ocean", "Cold Ocean", "cold_ocean"},
+            {"deep ocean", "Deep Ocean", "deep_ocean"}, {"frozen ocean", "Frozen Ocean", "frozen_ocean"}, {"plains", "Plains", "plains"}, {"sunflower plains", "Sunflower Plains", "sunflower_plains"},
+            {"forest", "Forest", "forest"}, {"birch forest", "Birch Forest", "birch_forest"}, {"taiga", "Taiga", "taiga"}, {"snowy taiga", "Snowy Taiga", "snowy_taiga"},
+            {"river", "River", "river"}, {"frozen river", "Frozen River", "frozen_river"}, {"beach", "Beach", "beach"}, {"jungle", "Jungle", "jungle"}, {"savanna", "Savanna", "savanna"},
+            {"badlands", "Badlands", "badlands"}, {"swamp", "Swamp", "swamp"}};
+        for (String[] e : exact) {
+            Reader.Reading er = Reader.read(e[0], grid);
+            Reader.Claim ec = er.target();
+            check(ec != null && ec.biomes.size() == 1 && ec.biomes.get(0).equals(e[2]) && ec.label().equals(e[1]), "'" + e[0] + "' must mean only " + e[2] + ", got " + (ec == null ? "nothing" : ec.biomes));
+        }
+        // the search itself is exact too: "ocean" must not match the warm ocean cells
+        {
+            Set<String> seen = new HashSet<>();
+            PlaceSearch.Result ocs = PlaceSearch.run(grid, Reader.read("ocean", grid).searchable(), 20000, null);
+            for (PlaceSearch.Region rg : ocs.regions) seen.add(rg.biome);
+            check(seen.size() == 1 && seen.contains("Ocean"), "'ocean' search returns only Ocean cells, got " + seen);
+            seen.clear();
+            for (PlaceSearch.Region rg : PlaceSearch.run(grid, Reader.read("warm ocean", grid).searchable(), 20000, null).regions) seen.add(rg.biome);
+            check(seen.size() == 1 && seen.contains("Warm Ocean"), "'warm ocean' search returns only Warm Ocean cells, got " + seen);
+            seen.clear();
+            for (PlaceSearch.Region rg : PlaceSearch.run(grid, Reader.read("plains", grid).searchable(), 20000, null).regions) seen.add(rg.biome);
+            check(seen.size() == 1 && seen.contains("Plains"), "'plains' search returns only Plains cells, got " + seen);
+        }
+        // the whole family, when you ask for it
+        for (String[] e : new String[][]{{"any ocean", "9"}, {"all forests", "5"}, {"every taiga", "4"}, {"any plains biome", "2"}, {"all oceans", "9"}}) {
+            Reader.Claim fc = Reader.read(e[0], grid).target();
+            check(fc != null && fc.ref.biomes.size() == Integer.parseInt(e[1]), "'" + e[0] + "' means " + e[1] + " biomes, got " + (fc == null ? "nothing" : fc.ref.biomes.size()));
+        }
+        // comma lists, typos, and village kinds
+        r = Reader.read("plains vilage, plais biome", grid);
+        System.out.println(describe(r));
+        check(r.target() != null && r.target().label().equals("Plains"), "comma list: plais -> plains target");
+        check(find(r, "Plains Village") != null, "comma list: 'plains vilage' -> Plains Village");
+        r = Reader.read("desert village, savanna village, snowy village, taiga village", grid);
+        check(find(r, "Desert Village") != null && find(r, "Savanna Village") != null && find(r, "Snowy Village") != null && find(r, "Taiga Village") != null, "every village kind understood: " + describe(r));
+        r = Reader.read("warm ocean ruins, cold ocean ruins, beached shipwreck, ocean shipwreck", grid);
+        check(find(r, "Warm Ocean Ruins") != null && find(r, "Cold Ocean Ruins") != null && find(r, "Beached Shipwreck") != null && find(r, "Ocean Shipwreck") != null, "ruin and wreck kinds understood: " + describe(r));
+        r = Reader.read("desert village", grid);
+        check(r.target() != null && (r.target().structures.contains("desert_village") || (r.target().biomes.size() == 1 && r.target().biomes.contains("desert"))), "desert village is searched as desert villages only");
 
         // --- numbers
         r = Reader.read("forest with a taiga within 1.5k blocks and ocean 800 blocks away", grid);
         System.out.println(describe(r));
         check(find(r, "Taiga") != null && find(r, "Taiga").within == 1500, "1.5k blocks = 1500");
-        check(find(r, "Ocean (any)") != null && find(r, "Ocean (any)").within == 800, "800 blocks");
+        check(find(r, "Ocean") != null && find(r, "Ocean").within == 800, "800 blocks");
 
         // --- every single biome and structure resolves by its own name, in several spellings
         for (Lexicon.Item it : Lexicon.items()) {
@@ -142,6 +184,11 @@ public final class ReaderTest {
             boolean allExact = true;
             for (PlaceSearch.Region rg : vres.regions) if (!rg.exact) allExact = false;
             check(allExact, "village results are the listed positions, not cell centres");
+            Reader.Claim dv = Reader.read("desert village", grid).target();
+            check(dv != null && !dv.approximate && dv.structures.contains("desert_village"), "desert village uses the village list when there is one");
+            PlaceSearch.Result dres = PlaceSearch.run(grid, Reader.read("desert village", grid).searchable(), 20000, null);
+            PlaceSearch.Result allv = PlaceSearch.run(grid, Reader.read("village", grid).searchable(), 20000, null);
+            check(dres.regions.size() > 0 && dres.regions.size() < allv.regions.size(), "desert villages are a part of all villages (" + dres.regions.size() + " of " + allv.regions.size() + ")");
             Reader.Reading nv = Reader.read("plains with no village within 500 blocks", grid);
             long withV = PlaceSearch.run(grid, Reader.read("plains with a village within 500 blocks", grid).searchable(), 20000, null).cells;
             long noV = PlaceSearch.run(grid, nv.searchable(), 20000, null).cells;

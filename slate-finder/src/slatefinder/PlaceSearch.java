@@ -31,6 +31,7 @@ public final class PlaceSearch {
         public long cells;
         public long ms;
         public boolean cancelled;
+        public boolean truncated;
         public int step;
     }
 
@@ -43,11 +44,45 @@ public final class PlaceSearch {
 
     private static final Map<String, Points> CACHE = new HashMap<>();
 
+    /** True if a position list exists for this structure (variants such as "desert village" use their parent's list). */
     public static boolean hasPoints(String kind) {
-        try { return Landmarks.fileFor(kind).isFile(); } catch (RuntimeException e) { return false; }
+        try { return Landmarks.fileFor(listKind(kind)).isFile(); } catch (RuntimeException e) { return false; }
     }
 
-    private static synchronized Points points(String kind) {
+    private static String listKind(String kind) {
+        Lexicon.Item it = Lexicon.byId(kind);
+        return it != null ? it.listKind() : kind;
+    }
+
+    /**
+     * Positions for a structure on this map. A variant ("desert village") is its parent's list cut down to
+     * the points that actually sit in the variant's biomes, so it is exact, not a guess.
+     */
+    private static synchronized Points points(String kind, BiomeGrid grid) {
+        Lexicon.Item it = Lexicon.byId(kind);
+        Points base = loadList(listKind(kind));
+        if (base == null || it == null || it.pointsFrom == null || it.habitat == null || grid == null) return base;
+        String key = kind + "@" + System.identityHashCode(grid) + "@" + base.modified;
+        Points cut = VARIANTS.get(key);
+        if (cut != null) return cut;
+        boolean[] ok = maskOf(grid, Arrays.asList(it.habitat));
+        int[] xs = new int[base.xs.length], zs = new int[base.xs.length];
+        int n = 0;
+        for (int i = 0; i < base.xs.length; i++) {
+            int b = grid.at(grid.col(base.xs[i]), grid.col(base.zs[i]));
+            if (b >= 0 && ok[b]) { xs[n] = base.xs[i]; zs[n] = base.zs[i]; n++; }
+        }
+        cut = new Points();
+        cut.modified = base.modified;
+        cut.xs = Arrays.copyOf(xs, n);
+        cut.zs = Arrays.copyOf(zs, n);
+        VARIANTS.put(key, cut);
+        return cut;
+    }
+
+    private static final Map<String, Points> VARIANTS = new HashMap<>();
+
+    private static synchronized Points loadList(String kind) {
         File f = Landmarks.fileFor(kind);
         if (!f.isFile()) return null;
         Points p = CACHE.get(kind);
@@ -110,7 +145,7 @@ public final class PlaceSearch {
         }
         Map<Integer, int[]> exact = new HashMap<>();
         for (String kind : target.structures) {
-            Points p = points(kind);
+            Points p = points(kind, grid);
             if (p == null) continue;
             for (int i = 0; i < p.xs.length; i++) {
                 int col = grid.col(p.xs[i]) - c0, row = grid.col(p.zs[i]) - c0;
@@ -142,7 +177,7 @@ public final class PlaceSearch {
             }
             // a window slightly past the radius, so things just outside it still count
             for (String kind : c.structures) {
-                Points p = points(kind);
+                Points p = points(kind, grid);
                 if (p == null) continue;
                 for (int i = 0; i < p.xs.length; i++) {
                     int col = grid.col(p.xs[i]) - c0, row = grid.col(p.zs[i]) - c0;
@@ -161,7 +196,9 @@ public final class PlaceSearch {
 
         // group what is left into regions
         res.cells = count(pass);
-        res.regions.addAll(regions(grid, pass, w, c0, exact, cancel));
+        boolean[] trunc = new boolean[1];
+        res.regions.addAll(regions(grid, pass, w, c0, exact, cancel, trunc));
+        res.truncated = trunc[0];
         res.regions.sort(Comparator.comparingDouble(a -> a.dist));
         if (cancel != null && cancel.cancelled()) res.cancelled = true;
         return finish(res, t0);
@@ -180,12 +217,28 @@ public final class PlaceSearch {
 
     private static String commas(long v) { return String.format("%,d", v); }
 
-    private static boolean[] maskOf(BiomeGrid grid, List<String> ids) {
-        boolean[] out = new boolean[256];
-        for (String id : ids) {
-            boolean[] m = grid.mask(id);
-            for (int i = 0; i < 256; i++) if (m[i]) out[i] = true;
+    /** The biome ids this map holds, without the "minecraft:" prefix, by index. */
+    static String[] idsOf(BiomeGrid grid) {
+        String[] out = new String[grid.biomes.length];
+        for (int i = 0; i < out.length; i++) {
+            String s = grid.biomes[i];
+            int c = s.indexOf(':');
+            out[i] = c >= 0 ? s.substring(c + 1) : s;
         }
+        return out;
+    }
+
+    /** Whether this map holds exactly that biome (the grid's own lookup also matches "ocean" to every ocean). */
+    public static boolean known(BiomeGrid grid, String id) {
+        for (String s : idsOf(grid)) if (s.equals(id)) return true;
+        return false;
+    }
+
+    /** Exact biome match: "ocean" is the ocean and nothing else, "warm_ocean" is the warm ocean and nothing else. */
+    static boolean[] maskOf(BiomeGrid grid, List<String> ids) {
+        boolean[] out = new boolean[256];
+        String[] have = idsOf(grid);
+        for (String id : ids) for (int i = 0; i < have.length && i < 256; i++) if (have[i].equals(id)) out[i] = true;
         return out;
     }
 
@@ -214,7 +267,7 @@ public final class PlaceSearch {
         }
     }
 
-    private static List<Region> regions(BiomeGrid grid, byte[] pass, int w, int c0, Map<Integer, int[]> exact, Cancel cancel) {
+    private static List<Region> regions(BiomeGrid grid, byte[] pass, int w, int c0, Map<Integer, int[]> exact, Cancel cancel, boolean[] truncatedFlag) {
         List<Region> out = new ArrayList<>();
         int[] queue = new int[1024];
         for (int start = 0; start < pass.length; start++) {
@@ -273,7 +326,7 @@ public final class PlaceSearch {
             rg.minZ = grid.worldX(c0 + minR); rg.maxZ = grid.worldX(c0 + maxR);
             rg.biome = pretty(grid.nameAt(c0 + bCol, c0 + bRow));
             out.add(rg);
-            if (out.size() > 20000) break;
+            if (out.size() > 20000) { truncatedFlag[0] = true; break; }
         }
         return out;
     }

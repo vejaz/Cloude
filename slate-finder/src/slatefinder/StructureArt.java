@@ -9,12 +9,19 @@ final class StructureArt {
 
     static void draw(Art a, String id) {
         switch (id) {
-            case "village": village(a); break;
+            case "village": case "plains_village": village(a, "plains"); break;
+            case "desert_village": village(a, "desert"); break;
+            case "savanna_village": village(a, "savanna"); break;
+            case "snowy_village": village(a, "snowy"); break;
+            case "taiga_village": village(a, "taiga"); break;
             case "pillager_outpost": outpost(a); break;
             case "woodland_mansion": mansion(a); break;
             case "ocean_monument": monument(a); break;
-            case "ocean_ruin": oceanRuin(a); break;
-            case "shipwreck": shipwreck(a); break;
+            case "ocean_ruin": oceanRuin(a, "default"); break;
+            case "warm_ocean_ruin": oceanRuin(a, "warm"); break;
+            case "cold_ocean_ruin": oceanRuin(a, "cold"); break;
+            case "shipwreck": case "ocean_shipwreck": shipwreck(a); break;
+            case "beached_shipwreck": beachedShipwreck(a); break;
             case "buried_treasure": treasure(a); break;
             case "desert_pyramid": pyramid(a); break;
             case "jungle_temple": jungleTemple(a); break;
@@ -72,22 +79,46 @@ final class StructureArt {
 
     // ------------------------------------------------------------------ overworld
 
-    private static void village(Art a) {
-        sky(a, 0xFF72B0EA, 0xFFCFE6FA, true);
-        a.farHills(a.heights(52, 5, 28, 1), 0xFF9FCB86);
-        int[] h = flatGround(a, 70, GRASS, DIRT);
-        a.rect(0, 70, Art.W, 2, 0xFFA89060);
-        for (int x = 0; x < Art.W; x++) a.px(x, 70, Art.shade(0xFFB8A070, 0.9 + Art.hash(x, 1, a.seed) * 0.2));
-        house(a, 8, 70, 22, 14, PLANK, 0xFF7A5A3A, 0xFF4A3622);
-        house(a, 52, 70, 16, 11, 0xFFC8C0B0, 0xFF8A3A2A, 0xFF5A4A32);
-        house(a, 108, 70, 26, 17, PLANK, 0xFF6A4A32, 0xFF4A3622);
+    private static void village(Art a, String type) {
+        boolean desert = type.equals("desert"), savanna = type.equals("savanna"), snowy = type.equals("snowy"), taiga = type.equals("taiga");
+        if (desert) { a.sky(0xFF74B4EA, 0xFFF4E9C6, 64); a.sun(128, 16, 0xFFFFE9A0); }
+        else if (snowy) { a.sky(0xFFAFC2D6, 0xFFE4ECF4, 64); a.clouds(4, 6, 26, 0xFFF4F7FA); }
+        else if (savanna) { a.sky(0xFF7EB4E0, 0xFFF4DCAA, 64); a.sun(128, 18, 0xFFFFE0A0); a.clouds(3, 8, 24, 0xFFFFF4E0); }
+        else if (taiga) { a.sky(0xFF86B0D8, 0xFFD2E4F0, 64); a.clouds(4, 6, 28, 0xFFF4F8FA); }
+        else sky(a, 0xFF72B0EA, 0xFFCFE6FA, true);
+        a.farHills(a.heights(52, 5, 28, 1), desert ? 0xFFEAD7A0 : snowy ? 0xFFD8E3EE : savanna ? 0xFFCFC48A : taiga ? 0xFF557A60 : 0xFF9FCB86);
+        int top = desert ? 0xFFF2DE96 : snowy ? 0xFFF2F6FA : savanna ? 0xFFB5AA4A : taiga ? 0xFF4F8A3A : GRASS;
+        int sub = desert ? 0xFFD9C27F : snowy ? 0xFFDCE6EE : DIRT;
+        int[] h = flatGround(a, 70, top, sub);
+        for (int x = 0; x < Art.W; x++) a.px(x, 70, Art.shade(desert ? 0xFFE0C070 : 0xFFB8A070, 0.9 + Art.hash(x, 1, a.seed) * 0.2));
+        int wall, roof, log;
+        if (desert) { wall = 0xFFE6CC84; roof = 0xFFD9B86A; log = 0xFFC8A458; }
+        else if (savanna) { wall = 0xFFB5663A; roof = 0xFF8A4A2A; log = 0xFF6A3A22; }
+        else if (snowy) { wall = 0xFF6A4A2E; roof = 0xFFF2F6FA; log = 0xFF4A3220; }
+        else if (taiga) { wall = 0xFF5A4028; roof = 0xFF3F3A34; log = 0xFF3A2A1A; }
+        else { wall = PLANK; roof = 0xFF7A5A3A; log = 0xFF4A3622; }
+        if (desert) {
+            // flat-roofed sandstone boxes
+            for (int[] b : new int[][]{{8, 22, 14}, {52, 16, 11}, {108, 26, 17}}) {
+                a.tex(b[0], 70 - b[2], b[1], b[2], wall, 0.2);
+                a.rect(b[0] - 1, 70 - b[2] - 2, b[1] + 2, 2, roof);
+                a.rect(b[0] + b[1] / 2 - 1, 64, 3, 6, DARK_PLANK);
+                a.rect(b[0] + 3, 70 - b[2] + 3, 3, 3, GLASS);
+            }
+            a.cactus(34, 70, 6); a.cactus(98, 70, 8); a.cactus(150, 70, 5);
+        } else {
+            house(a, 8, 70, 22, 14, wall, roof, log);
+            house(a, 52, 70, 16, 11, taiga ? 0xFF8A8A84 : 0xFFC8C0B0, snowy ? 0xFFF2F6FA : taiga ? 0xFF4A4A44 : 0xFF8A3A2A, log);
+            house(a, 108, 70, 26, 17, wall, roof, log);
+        }
         // well
         a.tex(84, 63, 10, 7, COBBLE, 0.3); a.rect(85, 64, 8, 2, 0xFF3F76E4); a.rect(84, 56, 1, 7, DARK_PLANK); a.rect(93, 56, 1, 7, DARK_PLANK); a.tex(83, 54, 12, 2, 0xFF7A5A3A, 0.2);
-        // farm
-        a.rect(34, 68, 14, 2, 0xFF5A3A22); for (int x = 34; x < 48; x += 2) { a.px(x, 67, 0xFFE8D040); a.px(x, 66, 0xFFE8D040); }
+        if (!desert && !snowy) { a.rect(34, 68, 14, 2, 0xFF5A3A22); for (int x = 34; x < 48; x += 2) { a.px(x, 67, 0xFFE8D040); a.px(x, 66, 0xFFE8D040); } }
         villager(a, 74, 70); villager(a, 100, 70);
-        for (int i = 0; i < 20; i++) { int x = a.rnd.nextInt(Art.W); a.grassTuft(x, 70, 0xFF5E9B2E); }
-        a.oak(144, 70, 10, 0xFF4F9A32);
+        if (savanna) { a.acacia(146, 70, 12, 0xFF7A9A2E); a.acacia(36, 70, 10, 0xFF7A9A2E); }
+        else if (snowy || taiga) { a.spruce(146, 70, 22, 0xFF2F5A3A, snowy); a.spruce(40, 70, 20, 0xFF2F5A3A, snowy); }
+        else if (!desert) { a.oak(144, 70, 10, 0xFF4F9A32); }
+        if (!desert && !snowy) for (int i2 = 0; i2 < 20; i2++) { int x = a.rnd.nextInt(Art.W); a.grassTuft(x, 70, savanna ? 0xFFC4B85A : 0xFF5E9B2E); }
     }
 
     private static void outpost(Art a) {
@@ -157,13 +188,34 @@ final class StructureArt {
         a.fog(14, Art.H, 0xFF10286A, 0.25);
     }
 
-    private static void oceanRuin(Art a) {
-        underwater(a, 0xFF3F6FD0, 0xFF1A2E78, 70, 0xFFD8C890);
-        a.tex(24, 52, 8, 22, MOSSY, 0.3); a.tex(46, 58, 8, 16, BRICK, 0.3); a.tex(24, 52, 40, 4, BRICK, 0.3);
-        a.tex(70, 62, 30, 12, BRICK, 0.3); a.rect(80, 50, 4, 14, BRICK); a.tex(104, 56, 10, 18, MOSSY, 0.3);
+    private static void oceanRuin(Art a, String kind) {
+        boolean warm = kind.equals("warm"), cold = kind.equals("cold");
+        underwater(a, warm ? 0xFF3FD0D8 : cold ? 0xFF3A5A8A : 0xFF3F6FD0, warm ? 0xFF1F7AA8 : cold ? 0xFF1A2A50 : 0xFF1A2E78, 70, warm ? 0xFFEAD89A : cold ? 0xFF7A7A78 : 0xFFD8C890);
+        int stone = warm ? 0xFFE6CC84 : BRICK, moss = warm ? 0xFFD2B872 : MOSSY;
+        a.tex(24, 52, 8, 22, moss, 0.3); a.tex(46, 58, 8, 16, stone, 0.3); a.tex(24, 52, 40, 4, stone, 0.3);
+        a.tex(70, 62, 30, 12, stone, 0.3); a.rect(80, 50, 4, 14, stone); a.tex(104, 56, 10, 18, moss, 0.3);
         a.rect(112, 52, 4, 4, 0xFFC8A860);
-        for (int k = 0; k < 5; k++) { int x = 14 + k * 30; for (int j = 0; j < 12; j++) a.px(x + (j / 4 % 2), 74 - j, 0xFF3F9A32); }
-        for (int k = 0; k < 4; k++) { int x = 20 + a.rnd.nextInt(120), y = 30 + a.rnd.nextInt(24); a.rect(x, y, 5, 2, 0xFF9AA0B8); a.px(x + 5, y - 1, 0xFF9AA0B8); }
+        if (warm) {
+            int[] cs = {0xFFE0409A, 0xFFE06A30, 0xFFE8D040, 0xFF8040C8, 0xFF30B0E0};
+            for (int k = 0; k < 9; k++) { int x = 8 + k * 17, ht = 4 + a.rnd.nextInt(7); for (int j2 = 0; j2 < ht; j2++) a.px(x, 74 - j2, cs[k % cs.length]); }
+        } else for (int k = 0; k < 5; k++) { int x = 14 + k * 30; for (int j2 = 0; j2 < 12; j2++) a.px(x + (j2 / 4 % 2), 74 - j2, 0xFF3F9A32); }
+        for (int k = 0; k < 4; k++) { int x = 20 + a.rnd.nextInt(120), y = 30 + a.rnd.nextInt(24); a.rect(x, y, 5, 2, warm ? 0xFFF08020 : 0xFF9AA0B8); a.px(x + 5, y - 1, warm ? 0xFFF08020 : 0xFF9AA0B8); }
+    }
+
+    private static void beachedShipwreck(Art a) {
+        sky(a, 0xFF72B0EA, 0xFFD6EAFA, true);
+        a.gradient(50, 62, 0xFF4A94DA, 0xFF3F7ACA);
+        int[] h = new int[Art.W];
+        for (int x = 0; x < Art.W; x++) h[x] = 60 + (int) (Math.max(0, x - 20) * 0.04);
+        a.land(h, 0xFFF0E2A6, 0xFFE0CC8A, 0xFFD2BC7A, 40, 0.22);
+        for (int x = 0; x < 30; x++) for (int y = 56; y < 62; y++) a.px(x, y, Art.mix(0xFF4A94DA, 0xFF3F7ACA, (y - 56) / 6.0));
+        // a ship tipped on its side in the sand
+        for (int j = 0; j < 16; j++) { int w = 50 - Math.abs(j - 6) * 3 - (j > 10 ? (j - 10) * 4 : 0); a.tex(44 + j, 52 + j / 2, Math.max(4, w), 1, j % 2 == 0 ? 0xFF6A4A2A : 0xFF7A5A3A, 0.3); }
+        a.line(74, 56, 96, 30, DARK_PLANK); a.line(75, 56, 97, 30, DARK_PLANK);
+        a.tex(88, 30, 12, 9, 0xFFD8D0C0, 0.25);
+        a.rect(66, 58, 8, 5, 0xFF8A5A2A); a.rect(69, 59, 2, 2, 0xFFD0D0D0);
+        for (int i = 0; i < 6; i++) { int x = 24 + i * 22; a.px(x, h[x] - 1, 0xFF6A4A2A); a.px(x + 1, h[x] - 2, 0xFF6A4A2A); }
+        a.oak(144, h[144], 9, 0xFF4F9A32);
     }
 
     private static void shipwreck(Art a) {

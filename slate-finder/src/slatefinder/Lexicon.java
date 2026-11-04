@@ -26,11 +26,17 @@ public final class Lexicon {
         /** Structures only: the biomes it generates in, used when there is no list of its exact positions. */
         public final String[] habitat;
         public final String habitatNote;
+        /** For a variant ("desert village"): the structure whose position list it is cut from. Null otherwise. */
+        public final String pointsFrom;
 
-        Item(String id, String name, Kind kind, char dim, int colour, String note, String[] aliases, String[] habitat, String habitatNote) {
+        Item(String id, String name, Kind kind, char dim, int colour, String note, String[] aliases, String[] habitat, String habitatNote, String pointsFrom) {
             this.id = id; this.name = name; this.kind = kind; this.dim = dim; this.colour = new Color(colour);
             this.note = note; this.aliases = aliases; this.habitat = habitat; this.habitatNote = habitatNote;
+            this.pointsFrom = pointsFrom == null || pointsFrom.isEmpty() ? null : pointsFrom;
         }
+
+        /** The position-list name this is searched under. */
+        public String listKind() { return pointsFrom != null ? pointsFrom : id; }
 
         public boolean structure() { return kind == Kind.STRUCTURE; }
         public String dimName() {
@@ -100,7 +106,7 @@ public final class Lexicon {
         "cherry_grove|Cherry Grove|F2A8C8|O|Pink cherry blossom.|cherry grove,cherry groves,cherry blossom,cherry blossoms,cherry forest,cherry trees,cherry woods,sakura,pink forest,pink trees\n" +
         "river|River|3F76E4|O|A narrow strip of water.|river,rivers,stream,streams,creek,creeks,brook,flowing water\n" +
         "frozen_river|Frozen River|A5C8F0|O|A river with ice on top.|frozen river,frozen rivers,icy river,ice river,frozen stream\n" +
-        "beach|Beach|F4E6A8|O|Narrow sand at the water.|beach,beaches,sandy beach,sand beach,sandy shore,seaside,coast,coastline,coastal\n" +
+        "beach|Beach|F4E6A8|O|Narrow sand at the water.|beach,beaches,sandy beach,sand beach,sandy shore\n" +
         "snowy_beach|Snowy Beach|F2EFD8|O|Icy shoreline.|snowy beach,snow beach,snowy beaches,icy beach,frozen beach,cold beach,snowy shore\n" +
         "stony_shore|Stony Shore|8A8D88|O|Stone and gravel at the water.|stony shore,stone shore,rocky shore,rocky beach,stone beach,stony beach,cliff shore,rocky coast\n" +
         "ocean|Ocean|2F5FB8|O|The ordinary sea.|ocean,oceans,sea,seas,ordinary ocean,regular ocean,normal ocean,open sea,open water\n" +
@@ -130,11 +136,20 @@ public final class Lexicon {
     // id | name | colour | dim | note | aliases | habitat biomes (comma) or - | habitat note
     private static final String STRUCTURES =
         "village|Village|C8A064|O|Houses, farms and paths, with villagers.|village,villages,town,towns,settlement,villager village,villager town,npc village|plains,sunflower_plains,snowy_plains,desert,savanna,taiga,snowy_taiga,meadow|Villages generate in plains, desert, savanna, taiga and snowy biomes.\n" +
+        "plains_village|Plains Village|C8A064|O|A village of oak houses on grass.|plains village,plains villages,plain village,grass village,grassland village,oak village,meadow village|plains,sunflower_plains,meadow|Plains villages generate in plains, sunflower plains and meadows.|village\n" +
+        "desert_village|Desert Village|D8B878|O|Sandstone houses among cacti.|desert village,desert villages,sand village,sandstone village,cactus village|desert|Desert villages only generate in deserts.|village\n" +
+        "savanna_village|Savanna Village|B89A5A|O|Dry acacia houses on yellow grass.|savanna village,savanna villages,savannah village,acacia village,dry village|savanna|Savanna villages only generate in savannas.|village\n" +
+        "snowy_village|Snowy Village|DCE6EE|O|Snow-covered spruce houses.|snowy village,snow village,snowy villages,ice village,winter village,cold village|snowy_plains|Snowy villages generate in snowy plains.|village\n" +
+        "taiga_village|Taiga Village|8A6A44|O|Spruce houses in the pines.|taiga village,taiga villages,spruce village,pine village,forest village|taiga,snowy_taiga|Taiga villages generate in taiga and snowy taiga.|village\n" +
         "pillager_outpost|Pillager Outpost|5A4630|O|A dark oak watchtower with pillagers.|pillager outpost,pillager outposts,outpost,outposts,pillager tower,illager outpost,illager tower,pillager watchtower|plains,sunflower_plains,desert,savanna,taiga,snowy_plains,snowy_taiga,grove,meadow,snowy_slopes,jagged_peaks,frozen_peaks,stony_peaks,cherry_grove|Outposts generate in flat and mountain biomes, never in forests or oceans.\n" +
         "woodland_mansion|Woodland Mansion|4A3A2A|O|A huge mansion with evokers, vindicators and allays.|woodland mansion,woodland mansions,mansion,mansions,illager mansion,evoker mansion,big mansion|dark_forest,pale_garden|Mansions only generate in dark forests (and pale gardens).\n" +
         "ocean_monument|Ocean Monument|4FA8A0|O|A prismarine temple with guardians and gold.|ocean monument,ocean monuments,monument,monuments,guardian temple,guardian monument,sea temple,underwater temple,prismarine temple|deep_ocean,deep_lukewarm_ocean,deep_cold_ocean,deep_frozen_ocean|Monuments sit in deep ocean.\n" +
-        "ocean_ruin|Ocean Ruins|7A8A7A|O|Sunken stone-brick ruins.|ocean ruin,ocean ruins,underwater ruins,sunken ruins,sea ruins,underwater ruin,sunken ruin|ocean,deep_ocean,warm_ocean,lukewarm_ocean,deep_lukewarm_ocean,cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean|Ocean ruins generate in any ocean.\n" +
+        "ocean_ruin|Ocean Ruins|7A8A7A|O|Sunken stone-brick ruins, warm or cold.|ocean ruin,ocean ruins,underwater ruins,sunken ruins,sea ruins,underwater ruin,sunken ruin|ocean,deep_ocean,warm_ocean,lukewarm_ocean,deep_lukewarm_ocean,cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean|Ocean ruins generate in any ocean.\n" +
+        "warm_ocean_ruin|Warm Ocean Ruins|8AA89A|O|Sandstone ruins in warm water.|warm ocean ruin,warm ocean ruins,warm ruins,warm underwater ruins,sandstone ruins,tropical ruins|warm_ocean,lukewarm_ocean,deep_lukewarm_ocean|Warm ruins are in warm and lukewarm oceans.|ocean_ruin\n" +
+        "cold_ocean_ruin|Cold Ocean Ruins|6A7A82|O|Stone-brick ruins in cold water.|cold ocean ruin,cold ocean ruins,cold ruins,cold underwater ruins,stone brick ruins,frozen ruins|ocean,deep_ocean,cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean|Cold ruins are in ocean, cold ocean and frozen ocean.|ocean_ruin\n" +
         "shipwreck|Shipwreck|7A5A3A|O|A wrecked wooden ship with loot.|shipwreck,shipwrecks,ship wreck,wrecked ship,sunken ship,sunken boat,wrecked boat,shipwrecked,ship|ocean,deep_ocean,warm_ocean,lukewarm_ocean,deep_lukewarm_ocean,cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean,beach,snowy_beach|Shipwrecks sit on the sea floor and on beaches.\n" +
+        "ocean_shipwreck|Ocean Shipwreck|6A4A32|O|A wreck on the sea floor.|ocean shipwreck,underwater shipwreck,sea shipwreck,sunken shipwreck,ocean floor shipwreck|ocean,deep_ocean,warm_ocean,lukewarm_ocean,deep_lukewarm_ocean,cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean|Ocean shipwrecks sit on the sea floor.|shipwreck\n" +
+        "beached_shipwreck|Beached Shipwreck|8A6A44|O|A wreck washed up on a beach.|beached shipwreck,beach shipwreck,shore shipwreck,washed up ship,stranded ship,beached ship|beach,snowy_beach|Beached shipwrecks are on beaches.|shipwreck\n" +
         "buried_treasure|Buried Treasure|E8D08A|O|A chest buried under a beach.|buried treasure,buried treasures,treasure chest,buried chest,pirate treasure,beach treasure|beach,snowy_beach|Buried treasure is only under beaches.\n" +
         "desert_pyramid|Desert Pyramid|E0C070|O|A sandstone pyramid with a hidden trap room.|desert pyramid,desert pyramids,desert temple,desert temples,sand pyramid,sandstone pyramid,pyramid,pyramids|desert|Desert pyramids only generate in deserts.\n" +
         "jungle_temple|Jungle Temple|6A7A5A|O|A mossy stepped temple with arrow traps.|jungle temple,jungle temples,jungle pyramid,jungle ruins,mossy temple,jungle shrine|jungle,bamboo_jungle,sparse_jungle|Jungle temples only generate in jungles.\n" +
@@ -159,44 +174,51 @@ public final class Lexicon {
     private static final String FAMILIES =
         "Mountains|mountain,mountains,mountainous,mountain range,mountain ranges,high mountains,big mountains,tall mountains,big mountain,tall mountain,high mountain,peak,peaks,summit,summits,mountain top,mountain tops|jagged_peaks,frozen_peaks,stony_peaks,snowy_slopes,windswept_hills,windswept_gravelly_hills,windswept_forest|\n" +
         "Snowy mountains|snowy mountains,snowy mountain,snow mountains,snow mountain,snowy peaks,snowy peak,snow peaks,white mountains,icy mountain,icy mountains,ice mountain,ice mountains,snow capped mountains,snow capped mountain,snowcapped mountains|snowy_slopes,jagged_peaks,frozen_peaks,grove|\n" +
-        "Hills|hill,hills,hilly,highlands hills,rolling hills,windy hills|windswept_hills,windswept_gravelly_hills,windswept_forest|\n" +
-        "Forests|forest,forests,woods,wood,woodland,woodlands,wooded,trees,tree,forest biome,forest biomes|forest,flower_forest,birch_forest,old_growth_birch_forest,dark_forest|\n" +
-        "Plains|plains,plain,planes,plane,grassland,grasslands,flatland,flatlands,flat land,prairie,plains biome,planes biome|plains,sunflower_plains|\n" +
-        "Taiga|taiga,taigas,taiga biome|taiga,snowy_taiga,old_growth_pine_taiga,old_growth_spruce_taiga|\n" +
-        "Jungle|jungle,jungles,jungle biome|jungle,sparse_jungle,bamboo_jungle|\n" +
-        "Badlands|badlands,badland,mesa,mesas,badlands biome|badlands,wooded_badlands,eroded_badlands|\n" +
-        "Savanna|savanna,savannas,savannah,savannahs,savanna biome|savanna,savanna_plateau,windswept_savanna|\n" +
+        "Hills|hill,hills,hilly,rolling hills,windy hills|windswept_hills,windswept_gravelly_hills,windswept_forest|\n" +
         "Snowy land|snow,snowy,snowy land,snowy biome,snowy biomes,snow biome,snow biomes,winter,winter biome,frozen land,icy,ice,cold biome,cold biomes,cold,frozen|snowy_plains,snowy_taiga,snowy_slopes,snowy_beach,ice_spikes,grove,jagged_peaks,frozen_peaks|\n" +
-        "Ocean (any)|ocean,oceans,sea,seas,water,open water,ocean biome,sea biome|ocean,deep_ocean,warm_ocean,lukewarm_ocean,deep_lukewarm_ocean,cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean|\n" +
-        "Deep ocean|deep ocean,deep oceans,deep sea,deep seas,deep water|deep_ocean,deep_lukewarm_ocean,deep_cold_ocean,deep_frozen_ocean|\n" +
-        "Warm ocean|warm ocean,warm oceans,warm sea,warm water,tropical water,tropical ocean|warm_ocean,lukewarm_ocean,deep_lukewarm_ocean|\n" +
-        "Frozen ocean|frozen ocean,frozen oceans,icy ocean,frozen sea|frozen_ocean,deep_frozen_ocean|\n" +
-        "Cold ocean|cold ocean,cold oceans,cold sea|cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean|\n" +
-        "River (any)|river,rivers,stream,streams,creek,creeks|river,frozen_river|\n" +
-        "Beach (any)|beach,beaches,sandy beach,sand beach|beach,snowy_beach|\n" +
         "Shoreline|shore,shores,shoreline,shorelines,coast,coastline,coasts,coastal,seaside,water edge|beach,snowy_beach,stony_shore|\n" +
         "Caves|cave,caves,cavern,caverns,cave biome,underground,caving|dripstone_caves,lush_caves,deep_dark|\n" +
         "Temples|temple,temples,pyramid structure||desert_pyramid,jungle_temple\n" +
-        "Ruins|ruin,ruins||ocean_ruin,trail_ruins,ruined_portal\n" +
-        "Underwater ruins|underwater structure,underwater structures|ocean_ruin|shipwreck\n";
+        "Ruins|ruin,ruins||ocean_ruin,trail_ruins\n" +
+        "Underwater structures|underwater structure,underwater structures||ocean_ruin,shipwreck\n";
+
+    /**
+     * "any forest", "all oceans", "every taiga": the whole family, when you really do mean all of them.
+     * Plain "forest" or "ocean" means that one biome only, so "ocean" and "warm ocean" are separate.
+     */
+    private static final String[][] ANY = {
+        {"forest", "forest,flower_forest,birch_forest,old_growth_birch_forest,dark_forest"},
+        {"plains", "plains,sunflower_plains"},
+        {"taiga", "taiga,snowy_taiga,old_growth_pine_taiga,old_growth_spruce_taiga"},
+        {"jungle", "jungle,sparse_jungle,bamboo_jungle"},
+        {"badlands", "badlands,wooded_badlands,eroded_badlands"},
+        {"savanna", "savanna,savanna_plateau,windswept_savanna"},
+        {"ocean", "ocean,deep_ocean,warm_ocean,lukewarm_ocean,deep_lukewarm_ocean,cold_ocean,deep_cold_ocean,frozen_ocean,deep_frozen_ocean"},
+        {"deep ocean", "deep_ocean,deep_lukewarm_ocean,deep_cold_ocean,deep_frozen_ocean"},
+        {"warm ocean", "warm_ocean,lukewarm_ocean,deep_lukewarm_ocean"},
+        {"cold ocean", "cold_ocean,deep_cold_ocean"},
+        {"frozen ocean", "frozen_ocean,deep_frozen_ocean"},
+        {"river", "river,frozen_river"},
+        {"beach", "beach,snowy_beach"},
+        {"swamp", "swamp,mangrove_swamp"},
+        {"windswept", "windswept_hills,windswept_gravelly_hills,windswept_forest,windswept_savanna"},
+    };
+    private static final String[] ANY_WORDS = {"any", "all", "every", "any kind of", "all kinds of", "every kind of"};
 
     /** Aliases where the family reading should win over the single biome that also owns the word. */
     private static final Set<String> GENERIC_OVERRIDES = new HashSet<>(Arrays.asList(
-        "forest", "wood", "woodland", "plain", "plane", "taiga", "jungle", "badland", "mesa", "savanna", "savannah",
-        "snowy mountain", "snow mountain", "ocean", "sea", "river", "stream", "creek", "beach", "coast", "coastline", "coastal",
-        "seaside", "deep ocean", "deep sea", "warm ocean", "warm sea", "frozen ocean", "icy ocean", "frozen sea", "cold ocean",
-        "cold sea", "icy mountain", "ice mountain", "snowy peak", "hill", "cave", "mountain", "peak", "temple", "sandy beach",
-        "sand beach", "tropical ocean", "deep water", "underground", "windy hill", "pyramid structure"));
+        "snowy mountain", "snow mountain", "icy mountain", "ice mountain", "snowy peak", "hill", "cave", "mountain", "peak",
+        "underground", "windy hill", "temple", "pyramid structure"));
 
     static {
         for (String line : BIOMES.split("\n")) {
             String[] f = line.split("\\|", -1);
-            add(new Item(f[0], f[1], Kind.BIOME, f[3].charAt(0), Integer.parseInt(f[2], 16), f[4], f[5].split(","), null, null));
+            add(new Item(f[0], f[1], Kind.BIOME, f[3].charAt(0), Integer.parseInt(f[2], 16), f[4], f[5].split(","), null, null, null));
         }
         for (String line : STRUCTURES.split("\n")) {
             String[] f = line.split("\\|", -1);
             String[] hab = f[6].equals("-") ? null : f[6].split(",");
-            add(new Item(f[0], f[1], Kind.STRUCTURE, f[3].charAt(0), Integer.parseInt(f[2], 16), f[4], f[5].split(","), hab, f[7]));
+            add(new Item(f[0], f[1], Kind.STRUCTURE, f[3].charAt(0), Integer.parseInt(f[2], 16), f[4], f[5].split(","), hab, f[7], f.length > 8 ? f[8] : ""));
         }
         // Families first would let them shadow exact names, so exact names go in first and families only
         // take an alias nothing exact has already claimed.
@@ -217,7 +239,12 @@ public final class Lexicon {
             if (r.biomes.isEmpty() && r.structures.isEmpty()) continue;
             for (String a : f[1].split(",")) index(a, r, true);
         }
-        // "snowy mountains" etc. are written out in the family list, so they win over the exact slope alias.
+        for (String[] a : ANY) {
+            Ref r = new Ref("Any " + a[0]);
+            r.family = true;
+            r.biomes.addAll(Arrays.asList(a[1].split(",")));
+            for (String w : ANY_WORDS) { index(w + " " + a[0], r, true); index(w + " " + a[0] + " biome", r, true); }
+        }
     }
 
     private static void add(Item it) {

@@ -34,6 +34,7 @@ public final class DescribePanel extends JPanel {
     private final JPanel funnelBox = new JPanel();
     private final JPanel resultsBox = new JPanel();
     private final JLabel status = new JLabel(" ");
+    private final CountView count = new CountView();
     private final JLabel mapStatus = new JLabel(" ");
     private final JTextField radiusField = field("225000");
     private final JTextField keyField = field("");
@@ -131,35 +132,39 @@ public final class DescribePanel extends JPanel {
     private JComponent left() {
         Column col = new Column();
 
+        // the description, the number of places, and the button: all in view at once, no scrolling
         Theme.Card c1 = card("Describe the place");
         JPanel in = stack();
         text.setFont(Theme.UI.deriveFont(14.5f));
-        text.setHint("Say it the way you would say it:  plains with a village next to a river, and snowy mountains a bit further out.");
+        text.setHint("Name what you can see, separated by commas:  plains village, river, snowy mountains far away, no desert");
         JScrollPane ts = new JScrollPane(text, ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED, ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         ts.setBorder(null);
         ts.setOpaque(false);
         ts.getViewport().setOpaque(false);
         slim(ts.getVerticalScrollBar(), 6);
         RoundBox tb = new RoundBox(ts, 12);
-        tb.setPreferredSize(new Dimension(100, 112));
-        tb.setMaximumSize(new Dimension(Integer.MAX_VALUE, 112));
+        tb.setPreferredSize(new Dimension(100, 96));
+        tb.setMaximumSize(new Dimension(Integer.MAX_VALUE, 96));
         tb.setAlignmentX(Component.LEFT_ALIGNMENT);
         in.add(tb);
+        in.add(Box.createVerticalStrut(10));
+
+        JPanel bar = new JPanel(new BorderLayout(12, 0));
+        bar.setOpaque(false);
+        bar.setAlignmentX(Component.LEFT_ALIGNMENT);
+        bar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 62));
+        bar.add(count, BorderLayout.CENTER);
+        searchBtn.setPreferredSize(new Dimension(132, 52));
+        JPanel btnWrap = new JPanel(new BorderLayout());
+        btnWrap.setOpaque(false);
+        btnWrap.add(searchBtn, BorderLayout.CENTER);
+        bar.add(btnWrap, BorderLayout.EAST);
+        in.add(bar);
         in.add(Box.createVerticalStrut(8));
-        JPanel ex = new JPanel(new WrapLayout(6, 6));
-        ex.setOpaque(false);
-        ex.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JLabel tryLabel = Theme.label("TRY", Theme.SMALL_B, Theme.DIM);
-        ex.add(tryLabel);
-        String[][] examples = {{"plains + village + river", "plains, a village, snowy mountains and a river"}, {"swamp, no desert", "I am in a swamp, no desert, ocean far away"}, {"desert pyramid by a beach", "desert with a pyramid near a beach"}};
-        for (String[] e : examples) {
-            String s = e[1];
-            Pill p = new Pill(e[0], Theme.MUTED, false);
-            p.setToolTipText(s);
-            p.onClick(() -> { text.setText(s); text.requestFocusInWindow(); });
-            ex.add(p);
-        }
-        in.add(ex);
+        status.setFont(Theme.SMALL);
+        status.setForeground(Theme.MUTED);
+        status.setAlignmentX(Component.LEFT_ALIGNMENT);
+        in.add(status);
         c1.add(in, BorderLayout.CENTER);
         col.add(c1);
         col.add(Box.createVerticalStrut(10));
@@ -176,39 +181,29 @@ public final class DescribePanel extends JPanel {
         col.add(c2);
         col.add(Box.createVerticalStrut(10));
 
-        Theme.Card c3 = card("Search");
+        Theme.Card c3 = card("Search area");
         JPanel s = stack();
         JPanel rr = new JPanel(new BorderLayout(8, 0));
         rr.setOpaque(false);
         rr.setAlignmentX(Component.LEFT_ALIGNMENT);
         rr.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
-        rr.add(Theme.label("Area", Theme.UI, Theme.MUTED), BorderLayout.WEST);
+        rr.add(Theme.label("Within", Theme.UI, Theme.MUTED), BorderLayout.WEST);
         radiusField.setPreferredSize(new Dimension(92, 30));
         JPanel mid = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         mid.setOpaque(false);
         mid.add(new RoundBox(radiusField, 8));
         rr.add(mid, BorderLayout.CENTER);
-        rr.add(Theme.label("blocks from spawn", Theme.SMALL, Theme.DIM), BorderLayout.EAST);
+        rr.add(Theme.label("blocks of spawn", Theme.SMALL, Theme.DIM), BorderLayout.EAST);
         s.add(rr);
         s.add(Box.createVerticalStrut(10));
         funnelBox.setLayout(new BoxLayout(funnelBox, BoxLayout.Y_AXIS));
         funnelBox.setOpaque(false);
         funnelBox.setAlignmentX(Component.LEFT_ALIGNMENT);
         s.add(funnelBox);
-        s.add(Box.createVerticalStrut(8));
-        status.setFont(Theme.UI);
-        status.setForeground(Theme.MUTED);
-        status.setAlignmentX(Component.LEFT_ALIGNMENT);
-        s.add(status);
-        s.add(Box.createVerticalStrut(10));
-        searchBtn.setPreferredSize(new Dimension(100, 44));
-        searchBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
-        searchBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        s.add(searchBtn);
         mapStatus.setFont(Theme.SMALL);
         mapStatus.setForeground(Theme.DIM);
         mapStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
-        s.add(Box.createVerticalStrut(8));
+        s.add(Box.createVerticalStrut(6));
         s.add(mapStatus);
         c3.add(s, BorderLayout.CENTER);
         col.add(c3);
@@ -216,6 +211,28 @@ public final class DescribePanel extends JPanel {
         col.add(settings());
         col.add(Box.createVerticalGlue());
         return col;
+    }
+
+    /** The big number: how many places match what is typed, always next to the text box. */
+    static final class CountView extends JComponent {
+        private String number = "—", caption = "describe a place";
+        private Color colour = Theme.DIM;
+        CountView() { setPreferredSize(new Dimension(150, 56)); }
+        void set(String number, String caption, Color colour) { this.number = number; this.caption = caption; this.colour = colour; repaint(); }
+        String number() { return number; }
+        @Override protected void paintComponent(Graphics g0) {
+            Graphics2D g = Theme.smooth(g0);
+            g.setColor(Theme.PANEL_HI);
+            g.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 12, 12));
+            g.setColor(new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), 200));
+            g.fill(new RoundRectangle2D.Float(0, 10, 4, getHeight() - 20, 4, 4));
+            g.setFont(Theme.TITLE.deriveFont(Font.BOLD, 30f));
+            g.setColor(colour);
+            g.drawString(number, 16, 34);
+            g.setFont(Theme.SMALL);
+            g.setColor(Theme.MUTED);
+            g.drawString(caption, 17, 50);
+        }
     }
 
     private JComponent settings() {
@@ -280,7 +297,7 @@ public final class DescribePanel extends JPanel {
         JPanel pills = new JPanel(new WrapLayout(6, 6));
         pills.setOpaque(false);
         pills.setAlignmentX(Component.LEFT_ALIGNMENT);
-        for (String f : new String[]{"All", "Biomes", "Structures", "Searchable here", "Underground", "Nether & End"}) {
+        for (String f : new String[]{"All", "Biomes", "Structures"}) {
             Pill p = new Pill(f, Theme.ACCENT, true);
             p.setActive(f.equals(bookFilter));
             p.onClick(() -> { bookFilter = f; for (Pill q : filterPills) q.setActive(q.label.equals(f)); refreshBook(); });
@@ -299,7 +316,7 @@ public final class DescribePanel extends JPanel {
                 Graphics2D g = Theme.smooth(g0);
                 g.setFont(Theme.SMALL);
                 int x = 0;
-                Object[][] k = {{Theme.GOOD, "searchable in your map"}, {Theme.WARN, "found by the biome it generates in"}, {Theme.DIM, "not in this map"}};
+                Object[][] k = {{Theme.GOOD, "exact"}, {Theme.WARN, "found by the biome it generates in"}};
                 for (Object[] e : k) {
                     g.setColor((Color) e[0]);
                     g.fillOval(x, 5, 8, 8);
@@ -347,13 +364,12 @@ public final class DescribePanel extends JPanel {
             if (ref != null) { viaWord.addAll(ref.biomes); viaWord.addAll(ref.structures); }
         }
         for (Lexicon.Item it : Lexicon.items()) {
+            // only what can actually be searched is listed: overworld, and present in this map
+            if (availability(it) > 1) continue;
             boolean ok;
             switch (bookFilter) {
                 case "Biomes": ok = !it.structure(); break;
                 case "Structures": ok = it.structure(); break;
-                case "Underground": ok = it.dim == 'C' || it.id.equals("mineshaft") || it.id.equals("stronghold") || it.id.equals("ancient_city") || it.id.equals("trial_chambers") || it.id.equals("monster_room") || it.id.equals("amethyst_geode") || it.id.equals("fossil"); break;
-                case "Nether & End": ok = it.dim == 'N' || it.dim == 'E'; break;
-                case "Searchable here": ok = availability(it) <= 1; break;
                 default: ok = true;
             }
             if (!ok) continue;
@@ -361,7 +377,7 @@ public final class DescribePanel extends JPanel {
             out.add(it);
         }
         book.setItems(out);
-        bookCount.setText(out.size() + " of " + Lexicon.items().size() + " shown   ·   click a picture to enlarge it, click the card to add it to your description");
+        bookCount.setText(out.size() + " that can be searched   ·   click a picture to enlarge it, click the card to add it");
     }
 
     private static boolean matches(Lexicon.Item it, String raw, String q) {
@@ -375,10 +391,10 @@ public final class DescribePanel extends JPanel {
     /** 0 searchable exactly, 1 searchable by biome, 2 not in this map, 3 cannot be placed. */
     private int availability(Lexicon.Item it) {
         if (it.dim == 'N' || it.dim == 'E') return 2;
-        if (!it.structure()) return grid == null || grid.known(it.id) ? 0 : 2;
+        if (!it.structure()) return grid == null || PlaceSearch.known(grid, it.id) ? 0 : 2;
         if (PlaceSearch.hasPoints(it.id)) return 0;
         if (it.habitat == null) return 3;
-        if (grid != null) for (String h : it.habitat) if (grid.known(h)) return 1;
+        if (grid != null) for (String h : it.habitat) if (PlaceSearch.known(grid, h)) return 1;
         return grid == null ? 1 : 2;
     }
 
@@ -404,7 +420,7 @@ public final class DescribePanel extends JPanel {
 
     private void typed() {
         debounce.restart();
-        if (text.getText().isBlank()) refreshReading();
+        if (text.getText().isBlank()) { refreshReading(); liveCount(); }
     }
 
     private void reparse() {
@@ -578,12 +594,15 @@ public final class DescribePanel extends JPanel {
         funnelBox.removeAll();
         funnelBox.revalidate();
         funnelBox.repaint();
-        if (grid == null || !reading.canSearch()) { note(reading.canSearch() || text.getText().isBlank() ? " " : "Fix the notes above, then press FIND IT.", Theme.MUTED); return; }
+        liveToken++;
+        if (text.getText().isBlank()) { count.set("—", "describe a place", Theme.DIM); note(" ", Theme.MUTED); return; }
+        if (grid == null) { count.set("—", "map not loaded", Theme.WARN); return; }
+        if (!reading.canSearch()) { count.set("—", "can't search that yet", Theme.WARN); note("Fix the notes below, then it will count.", Theme.MUTED); return; }
         final int my = ++liveToken;
+        count.set("…", "counting places", Theme.DIM);
         final BiomeGrid g = grid;
         final List<Reader.Claim> claims = reading.searchable();
         final int rad = radius();
-        note("Counting…", Theme.DIM);
         Thread t = new Thread(() -> {
             PlaceSearch.Result res = PlaceSearch.run(g, claims, rad, () -> my != liveToken);
             SwingUtilities.invokeLater(() -> { if (my == liveToken && !res.cancelled && !searching) showFunnel(res); });
@@ -601,9 +620,10 @@ public final class DescribePanel extends JPanel {
         funnelBox.repaint();
         long last = res.stepCounts.isEmpty() ? 0 : res.stepCounts.get(res.stepCounts.size() - 1);
         int regions = res.regions.size();
-        if (last == 0) note("Nowhere matches that. Something may be wrong, or those never meet in this world.", Theme.BAD);
-        else if (regions <= 40) note(String.format("%,d place%s match - small enough, press FIND IT.", regions, regions == 1 ? "" : "s"), Theme.GOOD);
-        else note(String.format("%,d places match - still broad. Add another landmark or say how close it is.", regions), Theme.WARN);
+        String shown = res.truncated ? "20,000+" : String.format("%,d", regions);
+        if (last == 0) { count.set("0", "nowhere matches", Theme.BAD); note("Nothing matches. Something in the description may be wrong, or those never meet in this world.", Theme.BAD); }
+        else if (regions <= 40) { count.set(shown, regions == 1 ? "place matches" : "places match", Theme.GOOD); note("Small enough - press FIND IT to see where.", Theme.GOOD); }
+        else { count.set(shown, "places match", Theme.WARN); note("Still broad. Add another landmark or say how close it is.", Theme.WARN); }
     }
 
     private JComponent funnelRow(String label, long n, long max, boolean last) {
@@ -649,7 +669,8 @@ public final class DescribePanel extends JPanel {
         searching = true;
         searchBtn.text = "STOP";
         searchBtn.repaint();
-        note("Searching…", Theme.MUTED);
+        count.set("…", "searching", Theme.DIM);
+        note("Searching the whole map…", Theme.MUTED);
         resultsBox.removeAll();
         resultsBox.add(wrapLabel("Searching the map…", Theme.UI, Theme.DIM, RIGHT_W - 60));
         resultsBox.revalidate();
@@ -708,7 +729,7 @@ public final class DescribePanel extends JPanel {
             note("No place in the world matches that description.", Theme.BAD);
             resultsBox.add(wrapLabel("Nothing matches. Something in the description is wrong, or those places never meet in this world. Check the notes on the left.", Theme.UI, Theme.DIM, RIGHT_W - 60));
         } else {
-            note(String.format("%,d matching cells in %d ms, grouped into %,d place%s.", res.cells, res.ms, res.regions.size(), res.regions.size() == 1 ? "" : "s"), res.regions.size() <= 40 ? Theme.GOOD : Theme.WARN);
+            note(String.format("%,d matching cells, found in %.1f s.", res.cells, res.ms / 1000.0), res.regions.size() <= 40 ? Theme.GOOD : Theme.WARN);
             JLabel head = Theme.label(String.format("%,d place%s, nearest to spawn first", res.regions.size(), res.regions.size() == 1 ? "" : "s"), Theme.SMALL_B, Theme.MUTED);
             head.setAlignmentX(Component.LEFT_ALIGNMENT);
             resultsBox.add(head);
@@ -804,7 +825,7 @@ public final class DescribePanel extends JPanel {
     }
 
     private void note(String s, Color c) {
-        status.setText("<html><body style='width:280px'>" + esc(s) + "</body></html>");
+        status.setText("<html><body style='width:268px'>" + esc(s) + "</body></html>");
         status.setForeground(c);
     }
 

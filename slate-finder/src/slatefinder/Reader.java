@@ -511,7 +511,7 @@ public final class Reader {
         for (String id : c.ref.biomes) {
             Lexicon.Item it = Lexicon.byId(id);
             if (it != null && (it.dim == 'N' || it.dim == 'E')) { otherDim.add(it.name + " (" + it.dimName() + ")"); continue; }
-            if (grid != null && !grid.known(id)) { missing.add(Lexicon.nameOf(id)); continue; }
+            if (grid != null && !PlaceSearch.known(grid, id)) { missing.add(Lexicon.nameOf(id)); continue; }
             biomes.add(id);
         }
         List<String> noData = new ArrayList<>();
@@ -524,7 +524,7 @@ public final class Reader {
             if (PlaceSearch.hasPoints(sid)) { c.structures.add(sid); continue; }
             if (it.habitat != null) {
                 int added = 0;
-                for (String h : it.habitat) if (grid == null || grid.known(h)) { biomes.add(h); added++; }
+                for (String h : it.habitat) if (grid == null || PlaceSearch.known(grid, h)) { biomes.add(h); added++; }
                 if (added > 0) { c.approximate = true; habitatUsed.add(it.name); noData.add(it.name + ": " + it.habitatNote); }
                 else cannotPlace = it.name + " generates in biomes that are not in this map.";
             } else cannotPlace = it.name + ": " + it.habitatNote;

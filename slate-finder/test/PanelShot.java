@@ -43,7 +43,7 @@ public final class PanelShot {
         settle(400);
         ImageIO.write(snap(f.getRootPane()), "png", new File(out, "01-empty.png"));
 
-        SwingUtilities.invokeAndWait(() -> app[0].describe.setDescription("there is a plains biome also a village snowy mountains and a river"));
+        SwingUtilities.invokeAndWait(() -> app[0].describe.setDescription("plains vilage, plais biome, desert village, warm ocean, snowy mountains far away"));
         settle(1500);
         ImageIO.write(snap(f.getRootPane()), "png", new File(out, "02-understood.png"));
 
