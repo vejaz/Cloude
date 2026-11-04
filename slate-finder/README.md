@@ -5,7 +5,7 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-130947.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-131151.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
@@ -23,6 +23,9 @@ To go back, delete that one jar. Your older builds are untouched.
 - **The book lists only what can be searched**: overworld biomes your map holds, and structures that are exact or can be found by
   biome. Nether, End and anywhere-underground structures are gone from the list (they are still explained if you type them).
 - The "Try" examples are removed.
+- **Every way of saying how far**: `within 500`, `up to 500`, `at most 500`, `no more than 500`, `less than 500`, `under 500`,
+  `inside 500`, `a radius of 500`, `500 block radius`, `about/roughly 500`, `1.5k`, `2 km`, `32 chunks`; ranges `400 to 800 blocks`,
+  `between 400 and 800`, `400-800`; and minimums `at least 500 away`, `more than 500`. A range is a ring on the map.
 
 ## What the tab does
 
@@ -58,5 +61,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (688 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (746 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

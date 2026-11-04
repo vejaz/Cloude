@@ -117,6 +117,41 @@ public final class ReaderTest {
         for (Reader.Issue i : r.issues) if (i.text.contains("within")) complained = true;
         check(!complained, "'within' is not reported as an unknown word");
 
+        // --- every way of saying how far: limits, ranges, minimums, units
+        String[][] dist = {
+            {"plains with a grove within 500 blocks", "500", "0"}, {"plains, grove up to 500 blocks", "500", "0"}, {"plains, grove no more than 500 blocks away", "500", "0"},
+            {"plains, grove not more than 500 blocks", "500", "0"}, {"plains, grove at most 500 blocks away", "500", "0"}, {"plains, grove less than 500 blocks away", "500", "0"},
+            {"plains, grove under 500 blocks", "500", "0"}, {"plains, grove inside 500 blocks", "500", "0"}, {"plains, grove within a radius of 500", "500", "0"},
+            {"plains, grove in a 500 block radius", "500", "0"}, {"plains, grove maximum of 500 blocks", "500", "0"}, {"plains, grove closer than 500 blocks", "500", "0"},
+            {"plains, grove about 500 blocks away", "500", "0"}, {"plains, grove roughly 500 blocks", "500", "0"}, {"plains, grove 1.5 km away", "1500", "0"}, {"plains, grove within 2 kilometers", "2000", "0"},
+            {"plains, grove 400 to 800 blocks away", "800", "400"}, {"plains, grove between 400 and 800 blocks", "800", "400"}, {"plains, grove 400-800 blocks", "800", "400"},
+            {"plains, grove from 400 to 800 blocks away", "800", "400"}, {"plains, grove 400 to 800", "800", "400"}, {"plains, grove at least 500 blocks away", "2000", "500"},
+            {"plains, grove more than 500 blocks away", "2000", "500"}, {"plains, grove over 500 blocks", "2000", "500"}, {"plains, grove further than 500 blocks", "2000", "500"},
+            {"plains, grove 32 chunks away", "512", "0"}, {"plains, a grove within 2 chunks", "32", "0"},
+        };
+        for (String[] d : dist) {
+            Reader.Reading dr = Reader.read(d[0], null);
+            Reader.Claim gc = find(dr, "Grove");
+            check(gc != null && gc.role == Reader.Role.NEAR && gc.within == Integer.parseInt(d[1]) && gc.minWithin == Integer.parseInt(d[2]),
+                "'" + d[0] + "' -> NEAR " + d[2] + ".." + d[1] + ", got " + (gc == null ? "nothing" : gc.role + " " + gc.minWithin + ".." + gc.within));
+            boolean junk = false;
+            for (Reader.Issue i : dr.issues) if (i.sev == Reader.Sev.WARN) junk = true;
+            check(!junk, "'" + d[0] + "' reports no unknown words: " + dr.issues.size());
+        }
+        // an absence keeps meaning absence, with or without the limit words
+        for (String ab : new String[]{"plains with no desert within 500 blocks", "plains, no desert within 500 blocks", "plains without desert up to 500 blocks"}) {
+            Reader.Claim dc = find(Reader.read(ab, null), "Desert");
+            check(dc != null && dc.role == Reader.Role.ABSENT && dc.within == 500, "'" + ab + "' -> no desert within 500, got " + (dc == null ? "nothing" : dc.role + " " + dc.within));
+        }
+        // a range really is a ring on the map: nothing inside the inner distance
+        {
+            Reader.Reading rg = Reader.read("plains, river 2000 to 6000 blocks away", grid);
+            Reader.Reading inner = Reader.read("plains, river within 2000 blocks", grid);
+            Reader.Reading outer = Reader.read("plains, river within 6000 blocks", grid);
+            long ring = PlaceSearch.run(grid, rg.searchable(), 20000, null).cells, in = PlaceSearch.run(grid, inner.searchable(), 20000, null).cells, out = PlaceSearch.run(grid, outer.searchable(), 20000, null).cells;
+            check(ring == out - in && ring >= 0, "range = within the outer minus within the inner (" + ring + " vs " + out + " - " + in + ")");
+        }
+
         // --- numbers
         r = Reader.read("forest with a taiga within 1.5k blocks and ocean 800 blocks away", grid);
         System.out.println(describe(r));

@@ -186,7 +186,10 @@ public final class PlaceSearch {
                 }
             }
             int r = Math.max(1, (int) Math.ceil(c.within / (double) grid.step));
+            byte[] inner = null;
+            if (c.minWithin > 0 && c.role != Reader.Role.ABSENT) { inner = src.clone(); dilate(inner, tmp, w, Math.max(1, (int) Math.ceil(c.minWithin / (double) grid.step))); }
             dilate(src, tmp, w, r);
+            if (inner != null) for (int i = 0; i < src.length; i++) if (inner[i] != 0) src[i] = 0;
             boolean wantNear = c.role != Reader.Role.ABSENT;
             for (int i = 0; i < pass.length; i++) {
                 if (pass[i] != 0 && (src[i] != 0) != wantNear) pass[i] = 0;
@@ -212,6 +215,7 @@ public final class PlaceSearch {
         String name = c.label();
         if (c.role == Reader.Role.ABSENT) return "no " + name + " within " + commas(c.within) + " blocks";
         if (c.role == Reader.Role.TARGET) return name + (c.approximate ? " (by its biome)" : "");
+        if (c.minWithin > 0) return name + " " + commas(c.minWithin) + " to " + commas(c.within) + " blocks" + (c.approximate ? " (by its biome)" : "");
         return name + " within " + commas(c.within) + " blocks" + (c.approximate ? " (by its biome)" : "");
     }
 

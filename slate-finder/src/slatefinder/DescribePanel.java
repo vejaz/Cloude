@@ -501,6 +501,7 @@ public final class DescribePanel extends JPanel {
         if (!c.searchable()) { tag = "CAN'T SEARCH"; tc = Theme.WARN; }
         else if (c.role == Reader.Role.TARGET) { tag = "THE SPOT"; tc = Theme.ACCENT; }
         else if (c.role == Reader.Role.ABSENT) { tag = "NOT within " + String.format("%,d", c.within); tc = Theme.BAD; }
+        else if (c.minWithin > 0) { tag = "NEAR  " + String.format("%,d", c.minWithin) + "–" + String.format("%,d", c.within); tc = Theme.GOOD; }
         else { tag = "NEAR  ≤ " + String.format("%,d", c.within); tc = Theme.GOOD; }
         Pill p = new Pill(tag, tc, true);
         p.setActive(true);

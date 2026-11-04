@@ -24,6 +24,8 @@ public final class Reader {
         public int within;
         /** True if a number or a phrase like "next to" gave the distance, rather than the default. */
         public boolean explicit;
+        /** Ranges ("400 to 800") and "at least 500": the thing must be farther than this, and within {@link #within}. */
+        public int minWithin;
         /** Biome ids to match (including habitat biomes standing in for a structure). */
         public final List<String> biomes = new ArrayList<>();
         /** Structure kinds that have a position list built. */
@@ -73,7 +75,7 @@ public final class Reader {
         "think know say said tell told get got give go going come coming take took make made use using used " +
         "one two three four five six seven eight nine ten first second third another other others same different " +
         "blocks block meters meter metres metre chunks chunk m km k " +
-        "if when while although though because since until during after before once already yet now today within " +
+        "if when while although though because since until during after before once already yet now today within less more than most least maximum minimum max min under below radius range between closer nearer exactly kilometers kilometres km " +
         "up down off yes yeah ok okay please thanks thank hi hello hey " +
         "world map minecraft game server screenshot picture image photo taken live lives living base house home " +
         "can t s d ll ve re");
@@ -308,7 +310,7 @@ public final class Reader {
             Claim old = seen.get(key);
             if (old == null) { seen.put(key, c); continue; }
             if (c.role == Role.TARGET) old.role = Role.TARGET;
-            if (c.explicit && (!old.explicit || c.within < old.within)) { old.within = c.within; old.explicit = true; }
+            if (c.explicit && (!old.explicit || c.within < old.within)) { old.within = c.within; old.explicit = true; old.minWithin = c.minWithin; }
         }
         out.claims.addAll(seen.values());
 
@@ -366,11 +368,19 @@ public final class Reader {
                 out.issues.add(new Issue(Sev.WARN, "You said both that " + a.label() + " is there and that it is not. Nothing can match that.", null, null));
         }
 
+        for (Claim c : out.claims) {
+            if (c.minWithin > 0 && c.role == Role.NEAR) {
+                boolean range = false;
+                for (Tok t : toks) if (isRange(t.raw)) range = true;
+                if (!range) out.issues.add(new Issue(Sev.INFO, c.label() + ": \"at least " + String.format("%,d", c.minWithin) + "\" has no upper limit, so I searched " + String.format("%,d", c.minWithin) + " to " + String.format("%,d", c.within) + " blocks. Say a range such as \"" + c.minWithin + " to " + (c.minWithin * 2) + "\" to choose it.", null, null));
+            }
+        }
+
         // 5. everything left over
         List<String> hintSeen = new ArrayList<>();
         for (int q = 0; q < m; q++) {
             Tok t = toks.get(q);
-            if (used[q] || t.punct || isNumber(t.raw) || isStop(t) || NEGATORS.contains(t.raw)) continue;
+            if (used[q] || t.punct || isDistanceToken(t.raw) || isStop(t) || NEGATORS.contains(t.raw)) continue;
             if (isDistanceWord(t.stem)) continue;
             if (t.raw.length() < 3) continue;
             String hint = HINT_MAP.get(t.stem);
@@ -415,9 +425,24 @@ public final class Reader {
 
     private static List<Tok> tokenise(String text) {
         String s = text.toLowerCase(Locale.ROOT).replace('’', '\'');
-        // "1.5k", "2k" -> numbers; "30 chunks" -> blocks
-        s = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*k\\b").matcher(s).replaceAll(r -> String.valueOf((long) Math.round(Double.parseDouble(r.group(1)) * 1000)));
+        // "1.5k", "2k", "1.5 km" -> numbers; "30 chunks" -> blocks
+        s = java.util.regex.Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*(?:k|km|kilometers?|kilometres?)\\b").matcher(s).replaceAll(r -> String.valueOf((long) Math.round(Double.parseDouble(r.group(1)) * 1000)) + " blocks");
         s = java.util.regex.Pattern.compile("(\\d+)\\s*chunks?").matcher(s).replaceAll(r -> String.valueOf(Integer.parseInt(r.group(1)) * 16) + " blocks");
+        s = s.replaceAll("(\\d),(\\d{3})", "$1$2");
+        // ranges: "400 to 800 blocks", "400-800", "between 400 and 800"
+        s = java.util.regex.Pattern.compile("between\\s+(\\d+)\\s*(?:blocks?)?\\s*(?:and|-|to)\\s*(\\d+)").matcher(s).replaceAll(r -> " rng" + r.group(1) + "x" + r.group(2) + " ");
+        s = java.util.regex.Pattern.compile("(\\d+)\\s*(?:blocks?)?\\s*(?:-|\u2013|\u2014|to|until)\\s*(\\d+)(\\s*block)?").matcher(s).replaceAll(r -> {
+            boolean unit = r.group(3) != null;
+            if (!unit && (Long.parseLong(r.group(1)) < 20 || Long.parseLong(r.group(2)) < 20)) return java.util.regex.Matcher.quoteReplacement(r.group(0));
+            return " rng" + r.group(1) + "x" + r.group(2) + (unit ? " blocks" : "") + " ";
+        });
+        // "no more than 500" is a limit, not an absence
+        s = s.replaceAll("\\b(?:no|not)\\s+(?:more|further|farther|greater|longer|over|beyond)\\s+(?:than\\s+)?(?=\\d)", "within ");
+        // "at least 500 blocks away", "more than 500": the thing is farther than that
+        s = java.util.regex.Pattern.compile("\\b(?:at\\s+least|more\\s+than|greater\\s+than|further\\s+than|farther\\s+than|further\\s+away\\s+than|over|beyond|minimum\\s+of|min\\s+of|(?:not|no)\\s+closer\\s+than)\\s+(\\d+)").matcher(s).replaceAll(r -> " min" + r.group(1) + " ");
+        // limits: "up to 500", "at most 500", "less than 500", "under 500", "inside 500", "a radius of 500", "500 block radius"
+        s = s.replaceAll("\\b(?:at\\s+most|maximum\\s+of|max\\s+of|up\\s+to|not\\s+over|less\\s+than|fewer\\s+than|closer\\s+than|nearer\\s+than|(?:within\\s+)?(?:a\\s+)?radius\\s+of|(?:under|below|inside)(?=\\s+\\d))", "within");
+        s = s.replaceAll("(\\d+)[\\s-]*blocks?[\\s-]*radius", "within $1 blocks");
         s = s.replace("'", "").replaceAll("(\\d),(\\d{3})", "$1$2");
         List<Tok> out = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
@@ -433,6 +458,10 @@ public final class Reader {
     }
 
     private static boolean isNumber(String w) { return !w.isEmpty() && w.chars().allMatch(Character::isDigit); }
+    /** "rng400x800" (a range) or "min500" (at least 500): produced by the tokeniser from distance phrases. */
+    private static boolean isRange(String w) { return w.matches("rng\\d+x\\d+"); }
+    private static boolean isMin(String w) { return w.matches("min\\d+"); }
+    private static boolean isDistanceToken(String w) { return isNumber(w) || isRange(w) || isMin(w); }
     private static boolean isStop(Tok t) { return STOP.contains(t.raw) || STOP.contains(t.stem); }
     private static boolean containsStop(List<Tok> toks, int i, int L) {
         for (int k = 0; k < L; k++) if (isStop(toks.get(i + k)) || toks.get(i + k).punct) return true;
@@ -505,8 +534,20 @@ public final class Reader {
         for (int q = 0; q < toks.size(); q++) {
             if (numOwner[q] != idx) continue;
             Tok t = toks.get(q);
-            long v = Long.parseLong(t.raw.length() > 9 ? "999999999" : t.raw);
             self.explicit = true;
+            if (isRange(t.raw)) {
+                String[] ab = t.raw.substring(3).split("x");
+                long rlo = Long.parseLong(ab[0]), rhi = Long.parseLong(ab[1]);
+                if (rlo > rhi) { long tmp = rlo; rlo = rhi; rhi = tmp; }
+                self.minWithin = (int) Math.min(rlo, 400000);
+                return (int) Math.min(Math.max(rhi, rlo + 1), 400000);
+            }
+            if (isMin(t.raw)) {
+                long mlo = Long.parseLong(t.raw.substring(3));
+                self.minWithin = (int) Math.min(mlo, 400000);
+                return (int) Math.min(Math.max(mlo * 4, mlo + 1500), 400000);
+            }
+            long v = Long.parseLong(t.raw.length() > 9 ? "999999999" : t.raw);
             return (int) Math.min(v, 400000);
         }
         for (int q = lo; q < limit; q++) {
@@ -532,13 +573,15 @@ public final class Reader {
         int m = toks.size();
         int[] owner = new int[m];
         Arrays.fill(owner, -1);
-        Set<String> quals = set("about", "around", "roughly", "approximately", "approx", "within", "like", "at", "maybe", "some", "over", "up", "to");
+        Set<String> quals = set("about", "around", "roughly", "approximately", "approx", "within", "like", "at", "maybe", "some", "over", "up", "to", "exactly", "nearly", "almost");
         for (int q = 0; q < m; q++) {
             Tok t = toks.get(q);
-            if (!isNumber(t.raw)) continue;
-            long v = t.raw.length() > 9 ? 999999999L : Long.parseLong(t.raw);
-            boolean unit = q + 1 < m && (toks.get(q + 1).raw.startsWith("block") || toks.get(q + 1).raw.equals("m") || toks.get(q + 1).raw.startsWith("meter") || toks.get(q + 1).raw.startsWith("metre"));
-            if (!((unit && v > 0) || v >= 20)) continue;
+            if (!isDistanceToken(t.raw)) continue;
+            if (isNumber(t.raw)) {
+                long v = t.raw.length() > 9 ? 999999999L : Long.parseLong(t.raw);
+                boolean unit = q + 1 < m && (toks.get(q + 1).raw.startsWith("block") || toks.get(q + 1).raw.equals("m") || toks.get(q + 1).raw.startsWith("meter") || toks.get(q + 1).raw.startsWith("metre"));
+                if (!((unit && v > 0) || v >= 20)) continue;
+            }
             int prevIdx = -1, nextIdx = -1;
             for (int k = 0; k < found.size(); k++) {
                 if (found.get(k).end <= q) prevIdx = k;
