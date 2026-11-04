@@ -128,21 +128,20 @@ public final class PlaceSearch {
         if (grid.col(radius) < 0) c1 = n - 1;
         int w = c1 - c0 + 1;
         if (w <= 0) return res;
-        byte[] pass = new byte[w * w];
+        Run run = new Run(grid, c0, w, cancel, res);
 
-        // the target
-        boolean[] tmask = maskOf(grid, target.biomes);
-        boolean anyMask = false;
-        for (boolean b : tmask) if (b) anyMask = true;
-        if (anyMask) {
-            for (int row = 0; row < w; row++) {
-                int base = row * w;
-                for (int col = 0; col < w; col++) {
-                    int b = grid.at(c0 + col, c0 + row);
-                    if (b >= 0 && tmask[b]) pass[base + col] = 1;
-                }
-            }
+        // who hangs from whom: the spot at the root, each thing from what it was described next to
+        Map<Reader.Claim, List<Reader.Claim>> kids = new IdentityHashMap<>();
+        for (Reader.Claim c : claims) {
+            if (c == target || !c.searchable()) continue;
+            Reader.Claim p = c.parent;
+            if (p == null || p == c || !claims.contains(p)) p = target;
+            kids.computeIfAbsent(p, k -> new ArrayList<>()).add(c);
         }
+        run.kids = kids;
+
+        // the target itself
+        byte[] pass = run.typeMask(target);
         Map<Integer, int[]> exact = new HashMap<>();
         for (String kind : target.structures) {
             Points p = points(kind, grid);
@@ -150,51 +149,17 @@ public final class PlaceSearch {
             for (int i = 0; i < p.xs.length; i++) {
                 int col = grid.col(p.xs[i]) - c0, row = grid.col(p.zs[i]) - c0;
                 if (col < 0 || row < 0 || col >= w || row >= w) continue;
-                pass[row * w + col] = 1;
                 exact.putIfAbsent(row * w + col, new int[]{p.xs[i], p.zs[i]});
             }
         }
-        note(res, label(target, false), count(pass));
-        if (cancel != null && cancel.cancelled()) { res.cancelled = true; return finish(res, t0); }
-
-        // everything described around it
-        byte[] src = new byte[w * w], tmp = new byte[w * w];
-        for (Reader.Claim c : claims) {
-            if (c == target || !c.searchable()) continue;
-            if (cancel != null && cancel.cancelled()) { res.cancelled = true; return finish(res, t0); }
-            Arrays.fill(src, (byte) 0);
-            boolean[] m = maskOf(grid, c.biomes);
-            boolean any = false;
-            for (boolean b : m) if (b) { any = true; break; }
-            if (any) {
-                for (int row = 0; row < w; row++) {
-                    int base = row * w;
-                    for (int col = 0; col < w; col++) {
-                        int b = grid.at(c0 + col, c0 + row);
-                        if (b >= 0 && m[b]) src[base + col] = 1;
-                    }
-                }
-            }
-            // a window slightly past the radius, so things just outside it still count
-            for (String kind : c.structures) {
-                Points p = points(kind, grid);
-                if (p == null) continue;
-                for (int i = 0; i < p.xs.length; i++) {
-                    int col = grid.col(p.xs[i]) - c0, row = grid.col(p.zs[i]) - c0;
-                    if (col < 0 || row < 0 || col >= w || row >= w) continue;
-                    src[row * w + col] = 1;
-                }
-            }
-            int r = Math.max(1, (int) Math.ceil(c.within / (double) grid.step));
-            byte[] inner = null;
-            if (c.minWithin > 0 && c.role != Reader.Role.ABSENT) { inner = src.clone(); dilate(inner, tmp, w, Math.max(1, (int) Math.ceil(c.minWithin / (double) grid.step))); }
-            dilate(src, tmp, w, r);
-            if (inner != null) for (int i = 0; i < src.length; i++) if (inner[i] != 0) src[i] = 0;
-            boolean wantNear = c.role != Reader.Role.ABSENT;
-            for (int i = 0; i < pass.length; i++) {
-                if (pass[i] != 0 && (src[i] != 0) != wantNear) pass[i] = 0;
-            }
-            note(res, label(c, true), count(pass));
+        note(res, label(target), count(pass));
+        for (Reader.Claim ch : kids.getOrDefault(target, List.of())) {
+            if (run.stop()) { res.cancelled = true; return finish(res, t0); }
+            byte[] cond = run.condition(ch);
+            if (cond == null) { res.cancelled = true; return finish(res, t0); }
+            for (int i = 0; i < pass.length; i++) if (cond[i] == 0) pass[i] = 0;
+            run.release(cond);
+            note(res, label(ch) + descendants(kids, ch), count(pass));
         }
 
         // group what is left into regions
@@ -207,16 +172,112 @@ public final class PlaceSearch {
         return finish(res, t0);
     }
 
+    private static String descendants(Map<Reader.Claim, List<Reader.Claim>> kids, Reader.Claim c) {
+        int n = 0;
+        Deque<Reader.Claim> q = new ArrayDeque<>(kids.getOrDefault(c, List.of()));
+        while (!q.isEmpty()) { Reader.Claim x = q.poll(); n++; q.addAll(kids.getOrDefault(x, List.of())); }
+        return n == 0 ? "" : "  (+" + n + " linked)";
+    }
+
+    /** One search over the map: the arrays it needs, and the tree of what must hold around each cell. */
+    private static final class Run {
+        final BiomeGrid grid;
+        final int c0, w;
+        final Cancel cancel;
+        final Result res;
+        Map<Reader.Claim, List<Reader.Claim>> kids;
+        private final ArrayDeque<byte[]> pool = new ArrayDeque<>();
+        private final byte[] tmp;
+
+        Run(BiomeGrid grid, int c0, int w, Cancel cancel, Result res) {
+            this.grid = grid; this.c0 = c0; this.w = w; this.cancel = cancel; this.res = res;
+            this.tmp = new byte[w * w];
+        }
+
+        boolean stop() { return cancel != null && cancel.cancelled(); }
+
+        byte[] get() {
+            byte[] a = pool.poll();
+            if (a == null) return new byte[w * w];
+            Arrays.fill(a, (byte) 0);
+            return a;
+        }
+
+        void release(byte[] a) { if (a != null && pool.size() < 6) pool.add(a); }
+
+        /** 1 where this kind of thing is (biome cells, and the cells holding a listed structure). */
+        byte[] typeMask(Reader.Claim c) {
+            byte[] out = get();
+            boolean[] m = maskOf(grid, c.biomes);
+            boolean any = false;
+            for (boolean b : m) if (b) { any = true; break; }
+            if (any) {
+                for (int row = 0; row < w; row++) {
+                    int base = row * w;
+                    for (int col = 0; col < w; col++) {
+                        int b = grid.at(c0 + col, c0 + row);
+                        if (b >= 0 && m[b]) out[base + col] = 1;
+                    }
+                }
+            }
+            for (String kind : c.structures) {
+                Points p = points(kind, grid);
+                if (p == null) continue;
+                for (int i = 0; i < p.xs.length; i++) {
+                    int col = grid.col(p.xs[i]) - c0, row = grid.col(p.zs[i]) - c0;
+                    if (col < 0 || row < 0 || col >= w || row >= w) continue;
+                    out[row * w + col] = 1;
+                }
+            }
+            return out;
+        }
+
+        /** Cells where this thing is, and where everything described from it holds too. */
+        byte[] where(Reader.Claim c) {
+            byte[] acc = typeMask(c);
+            for (Reader.Claim ch : kids.getOrDefault(c, List.of())) {
+                if (stop()) return acc;
+                byte[] cond = condition(ch);
+                if (cond == null) return acc;
+                for (int i = 0; i < acc.length; i++) if (cond[i] == 0) acc[i] = 0;
+                release(cond);
+            }
+            return acc;
+        }
+
+        /** 1 for every cell that has this thing, in the way it was described, around it. Null if stopped. */
+        byte[] condition(Reader.Claim c) {
+            if (stop()) return null;
+            byte[] src = c.role == Reader.Role.ABSENT ? typeMask(c) : where(c);
+            if (stop()) { release(src); return null; }
+            int r = Math.max(1, (int) Math.ceil(c.within / (double) grid.step));
+            byte[] inner = null;
+            if (c.minWithin > 0 && c.role != Reader.Role.ABSENT) {
+                inner = get();
+                System.arraycopy(src, 0, inner, 0, src.length);
+                dilate(inner, tmp, w, Math.max(1, (int) Math.ceil(c.minWithin / (double) grid.step)));
+            }
+            dilate(src, tmp, w, r);
+            if (inner != null) { for (int i = 0; i < src.length; i++) if (inner[i] != 0) src[i] = 0; release(inner); }
+            if (c.role == Reader.Role.ABSENT) for (int i = 0; i < src.length; i++) src[i] = (byte) (src[i] != 0 ? 0 : 1);
+            return src;
+        }
+    }
+
     private static Result finish(Result r, long t0) { r.ms = System.currentTimeMillis() - t0; return r; }
 
     private static void note(Result r, String text, long left) { r.steps.add(text); r.stepCounts.add(left); }
 
-    private static String label(Reader.Claim c, boolean near) {
+    private static String label(Reader.Claim c) {
         String name = c.label();
-        if (c.role == Reader.Role.ABSENT) return "no " + name + " within " + commas(c.within) + " blocks";
-        if (c.role == Reader.Role.TARGET) return name + (c.approximate ? " (by its biome)" : "");
-        if (c.minWithin > 0) return name + " " + commas(c.minWithin) + " to " + commas(c.within) + " blocks" + (c.approximate ? " (by its biome)" : "");
-        return name + " within " + commas(c.within) + " blocks" + (c.approximate ? " (by its biome)" : "");
+        String by = c.approximate ? " (by its biome)" : "";
+        String of = c.parent != null ? " " + c.parent.label() : "";
+        if (c.role == Reader.Role.ABSENT) return "no " + name + " within " + commas(c.within) + " blocks" + (c.parent != null ? " of" + of : "");
+        if (c.role == Reader.Role.TARGET) return name + by;
+        if (c.parent != null && c.relation != null && (c.relation.equals("touching") || c.relation.equals("in") || c.relation.equals("at") || c.relation.equals("next to")))
+            return name + by + " " + c.relation + of;
+        if (c.minWithin > 0) return name + " " + commas(c.minWithin) + " to " + commas(c.within) + " blocks" + (c.parent != null ? " from" + of : "") + by;
+        return name + " within " + commas(c.within) + " blocks" + (c.parent != null ? " of" + of : "") + by;
     }
 
     private static String commas(long v) { return String.format("%,d", v); }

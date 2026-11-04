@@ -55,6 +55,19 @@ public final class PanelShot {
         settle(4000);
         ImageIO.write(snap(f.getRootPane()), "png", new File(out, "04-results.png"));
 
+        // edit a distance and change the spot by hand, as a person would
+        final boolean[] edit = new boolean[4];
+        SwingUtilities.invokeAndWait(() -> app[0].describe.setDescription("there is plains and the river is touching the plains and a forest is next to the river and no desert within 800 blocks"));
+        settle(900);
+        SwingUtilities.invokeAndWait(() -> { edit[0] = app[0].describe.typeDistanceFor("Forest", "1.5k"); });
+        settle(1200);
+        ImageIO.write(snap(f.getRootPane()), "png", new File(out, "10-edited-distance.png"));
+        SwingUtilities.invokeAndWait(() -> { app[0].describe.makeSpotFor("River"); });
+        settle(1500);
+        ImageIO.write(snap(f.getRootPane()), "png", new File(out, "11-river-is-the-spot.png"));
+        SwingUtilities.invokeAndWait(() -> { Reader.Reading rr = app[0].describe.currentReading(); edit[1] = rr.target() != null && rr.target().label().equals("River"); for (Reader.Claim cc : rr.claims) if (cc.label().equals("Forest")) edit[2] = cc.within == 1500 && cc.parent != null && cc.parent.label().equals("River"); });
+        System.out.println("typed distance accepted: " + edit[0] + ", river is the spot: " + edit[1] + ", forest kept 1500 from the river: " + edit[2]);
+        if (!(edit[0] && edit[1] && edit[2])) System.exit(4);
         SwingUtilities.invokeAndWait(() -> app[0].describe.setBookFilter("Structures"));
         settle(600);
         ImageIO.write(snap(f.getRootPane()), "png", new File(out, "07-structures.png"));

@@ -17,7 +17,7 @@ public final class Reader {
 
     /** One thing the sentence said, resolved against what the map can actually search. */
     public static final class Claim {
-        public final Lexicon.Ref ref;
+        public Lexicon.Ref ref;
         /** The words as typed. */
         public final String said;
         public Role role;
@@ -34,12 +34,30 @@ public final class Reader {
         public boolean approximate;
         /** Why this claim cannot be searched, or null if it can. */
         public String unsearchable;
-        int start, end;
+        /** What this is described relative to ("the savanna touches the plains"); null means the spot being found. */
+        public Claim parent;
+        /** How it relates to its parent: "touching", "next to", "within 100 of", "in". */
+        public String relation;
+        /** Distances typed into the panel; they win over anything read from the sentence. -1 means none. */
+        public int userWithin = -1, userMin = -1;
+        /** The distance the words gave, before the thing was made the spot or hung off something else. */
+        int starWithin = 300, starMin;
+        int start, end, art;
 
         Claim(Lexicon.Ref ref, String said, int start, int end) { this.ref = ref; this.said = said; this.start = start; this.end = end; }
 
         public boolean searchable() { return unsearchable == null && (!biomes.isEmpty() || !structures.isEmpty()); }
         public String label() { return ref.label; }
+    }
+
+    /** Two things in the description that touch, sit next to, or are within some distance of each other. */
+    public static final class Link {
+        public final Claim a, b;
+        public final int dist, min;
+        public final String text;
+        /** Said as a story ("X is touching Y", "next to X is Y") rather than a list ("X near Y"). */
+        public final boolean narrative;
+        Link(Claim a, Claim b, int dist, int min, String text, boolean narrative) { this.a = a; this.b = b; this.dist = dist; this.min = min; this.text = text; this.narrative = narrative; }
     }
 
     public static final class Issue {
@@ -55,7 +73,26 @@ public final class Reader {
         public final List<Claim> claims = new ArrayList<>();
         public final List<Issue> issues = new ArrayList<>();
 
+        public final List<Link> links = new ArrayList<>();
+        final List<Issue> chainNotes = new ArrayList<>();
+        int step = 64;
+
         public Claim target() { for (Claim c : claims) if (c.role == Role.TARGET && c.searchable()) return c; return null; }
+
+        /** Makes this the place whose coordinates are wanted; everything else is re-hung from it. */
+        public void makeSpot(Claim c) {
+            if (c == null || !claims.contains(c) || c.role == Role.ABSENT) return;
+            for (Claim o : claims) if (o.role == Role.TARGET) o.role = Role.NEAR;
+            c.role = Role.TARGET;
+            orient(this);
+        }
+
+        /** Typed distances: {min, max}, or max only when min is 0. Pass a value below 0 to clear. */
+        public void setDistance(Claim c, int min, int max) {
+            c.userMin = min;
+            c.userWithin = max;
+            orient(this);
+        }
         public boolean canSearch() { return target() != null; }
         public boolean hasError() { for (Issue i : issues) if (i.sev == Sev.ERROR) return true; return false; }
         public List<Claim> searchable() { List<Claim> l = new ArrayList<>(); for (Claim c : claims) if (c.searchable()) l.add(c); return l; }
@@ -78,7 +115,8 @@ public final class Reader {
         "if when while although though because since until during after before once already yet now today within less more than most least maximum minimum max min under below radius range between closer nearer exactly kilometers kilometres km " +
         "up down off yes yeah ok okay please thanks thank hi hello hey " +
         "world map minecraft game server screenshot picture image photo taken live lives living base house home " +
-        "can t s d ll ve re");
+        "can t s d ll ve re " +
+        "theirs thers theres sits stands lies being alongside besides neighbouring neighboring connected joined attached meeting touches touch border borders bordering searching search finding");
 
     private static final Set<String> NEGATORS = set("no", "not", "without", "isnt", "arent", "dont", "doesnt", "cant", "wont", "never", "none", "nor", "neither",
         "lacking", "absent", "missing", "minus", "except", "excluding", "avoid", "lack");
@@ -86,7 +124,7 @@ public final class Reader {
     /** Words that say the thing right after them is the place being asked for. */
     private static final String[][] MARKERS = {
         {"i", "am"}, {"im"}, {"i", "m"}, {"standing"}, {"stand"}, {"stood"}, {"located"}, {"inside"}, {"i", "want"}, {"i", "need"},
-        {"looking", "for"}, {"find"}, {"locate"}, {"spot"}, {"target"}, {"i", "live"}, {"my", "base"}, {"screenshot"}, {"taken"}, {"i", "was"}, {"where", "i"}
+        {"looking", "for"}, {"looking"}, {"searching", "for"}, {"search", "for"}, {"searching"}, {"finding"}, {"find"}, {"locate"}, {"coordinates", "of"}, {"coords", "of"}, {"where", "is"}, {"spot"}, {"target"}, {"i", "live"}, {"my", "base"}, {"screenshot"}, {"taken"}, {"i", "was"}, {"where", "i"}
     };
 
     /** Words that are about blocks, mobs and so on, which the map does not record, with a hint. */
@@ -190,7 +228,9 @@ public final class Reader {
         int step = grid != null ? Math.max(1, grid.step) : 64;
 
         List<Tok> toks = tokenise(text);
+        canonicalise(toks);
         int m = toks.size();
+        out.step = step;
         // "not far" means close, not absent.
         for (int i = 0; i + 1 < m; i++) {
             if (toks.get(i).raw.equals("not") && (toks.get(i + 1).raw.equals("far") || toks.get(i + 1).raw.equals("too"))) {
@@ -303,18 +343,17 @@ public final class Reader {
             prev = c;
         }
 
-        // drop repeats of the same thing with the same role
-        Map<String, Claim> seen = new LinkedHashMap<>();
-        for (Claim c : kept) {
-            String key = c.ref.label + "/" + (c.role == Role.TARGET ? "TARGET" : c.role == Role.ABSENT ? "ABSENT" : "NEAR");
-            Claim old = seen.get(key);
-            if (old == null) { seen.put(key, c); continue; }
-            if (c.role == Role.TARGET) old.role = Role.TARGET;
-            if (c.explicit && (!old.explicit || c.within < old.within)) { old.within = c.within; old.explicit = true; old.minWithin = c.minWithin; }
+        // what touches what, next to what, within how far of what ("the savanna is touching a plains biome")
+        List<RawLink> raw = findLinks(toks, kept, step, out.issues);
+        // one entry per thing; with chains, "a plains biome" and "the plains biome" are told apart
+        Map<Claim, Claim> entityOf = new IdentityHashMap<>();
+        out.claims.addAll(formEntities(toks, kept, !raw.isEmpty(), entityOf));
+        for (RawLink rl : raw) {
+            Claim a = entityOf.get(rl.a), b = entityOf.get(rl.b);
+            if (a != null && b != null && a != b) out.links.add(new Link(a, b, rl.dist, rl.min, rl.text, rl.narrative));
         }
-        out.claims.addAll(seen.values());
 
-        // 3. choose the target: the one marked, else the first biome mentioned, else the first thing
+        // 3. choose the target: the one marked, else the first thing named
         int marked = 0;
         Claim first = null;
         for (Claim c : out.claims) if (c.role == Role.TARGET) { marked++; if (first == null) first = c; }
@@ -325,10 +364,15 @@ public final class Reader {
         }
         if (first == null) {
             Claim pick = null;
-            for (Claim c : out.claims) if (c.role == Role.NEAR && c.ref.isBiome()) { pick = c; break; }
-            if (pick == null) for (Claim c : out.claims) if (c.role == Role.NEAR) { pick = c; break; }
-            if (pick != null) pick.role = Role.TARGET;
+            for (Claim c : out.claims) if (c.role == Role.NEAR) { pick = c; break; }
+            if (pick != null) {
+                pick.role = Role.TARGET;
+                int named = 0;
+                for (Claim c : out.claims) if (c.role != Role.ABSENT) named++;
+                if (named > 1) out.issues.add(new Issue(Sev.INFO, "Finding " + pick.label() + " (the first thing you named). To find something else, click \"make this the spot\" on it, or write \"searching for the ...\".", null, null));
+            }
         }
+        for (Claim c : out.claims) { c.starWithin = c.within > 0 ? c.within : 300; c.starMin = c.minWithin; }
         for (Claim c : out.claims) if (c.role == Role.TARGET) c.within = 0;
 
         // 4. resolve every claim against what the map actually holds
@@ -349,6 +393,9 @@ public final class Reader {
             }
         }
 
+        // hang everything from the spot: chains first, anything unconnected hangs off the spot itself
+        orient(out);
+
         // thin biomes are mostly invisible at the grid spacing
         for (Claim c : out.claims) {
             if (!c.searchable()) continue;
@@ -357,8 +404,9 @@ public final class Reader {
             if (!thin) continue;
             if (c.role == Role.TARGET) {
                 out.issues.add(new Issue(Sev.WARN, c.label() + " is narrower than the " + step + "-block map spacing, so most of it is invisible here. Describe what it sits next to instead - for a beach, the ocean and the land behind it.", null, null));
-            } else if (c.within < step * 2) {
+            } else if (c.within < step * 2 && c.userWithin < 0) {
                 c.within = step * 2;
+                c.starWithin = Math.max(c.starWithin, c.within);
             }
         }
 
@@ -383,6 +431,7 @@ public final class Reader {
             if (used[q] || t.punct || isDistanceToken(t.raw) || isStop(t) || NEGATORS.contains(t.raw)) continue;
             if (isDistanceWord(t.stem)) continue;
             if (t.raw.length() < 3) continue;
+            if (nearConnecting(t.raw)) continue;   // "ofr", "teh", "wiht": a typo of a little word, not something to report
             String hint = HINT_MAP.get(t.stem);
             if (hint != null) {
                 if (!hintSeen.contains(t.stem)) { hintSeen.add(t.stem); out.issues.add(new Issue(Sev.WARN, "\"" + t.raw + "\" - " + hint + " Ignored.", null, null)); }
@@ -409,6 +458,284 @@ public final class Reader {
         return out;
     }
 
+    // ------------------------------------------------------------------ chains
+
+    private static final class RawLink {
+        final Claim a, b;
+        final int dist, min;
+        final String text;
+        final boolean narrative;
+        RawLink(Claim a, Claim b, int dist, int min, String text, boolean narrative) { this.a = a; this.b = b; this.dist = dist; this.min = min; this.text = text; this.narrative = narrative; }
+    }
+
+    private static final class Rel {
+        int start, end, dist, min;
+        String text;
+        boolean number;
+    }
+
+    private static final Set<String> OBJ_FILL = set("the", "a", "an", "that", "this", "any", "another", "of", "from", "to", "away", "blocks", "block", "its", "which");
+    private static final Set<String> SUBJ_FILL = set("is", "are", "was", "theres", "there", "thers", "theirs", "sits", "stands", "lies", "a", "an", "the", "also", "being", "be", "can", "that", "which");
+    private static final Set<String> COPULA = set("is", "are", "theres", "there", "thers", "theirs", "sits", "stands", "lies", "be");
+    private static final Set<String> AFTER_NAME = set("biome", "biomes", "structure", "structures", "area", "region");
+    private static final Set<String> CANON = set("there", "theres", "touching", "adjacent", "beside", "next", "close", "near", "within", "around", "search", "searching", "looking", "finding", "alongside", "bordering");
+
+    /** Fixes typos in the little structural words ("thers", "tuching", "ofr") so sentences with chains still parse. */
+    private static void canonicalise(List<Tok> toks) {
+        for (int i = 0; i < toks.size(); i++) {
+            Tok t = toks.get(i);
+            if (t.punct || isDistanceToken(t.raw) || t.raw.length() < 4) continue;
+            if (STOP.contains(t.raw) || NEGATORS.contains(t.raw) || CANON.contains(t.raw) || Lexicon.find(t.stem) != null || HINT_MAP.containsKey(t.stem)) continue;
+            for (String c : CANON) {
+                if (Math.abs(c.length() - t.raw.length()) <= 1 && osa(t.raw, c, 1) == 1) { toks.set(i, new Tok(c, false)); break; }
+            }
+        }
+    }
+
+    /** "touching", "next to", "within 100 blocks of", "close to", "in": a relation phrase starting at token i, or null. */
+    private static Rel relAt(List<Tok> toks, int i, int step) {
+        int m = toks.size();
+        String w = toks.get(i).raw;
+        String n1 = i + 1 < m ? toks.get(i + 1).raw : "", n2 = i + 2 < m ? toks.get(i + 2).raw : "";
+        Rel r = new Rel();
+        r.start = i;
+        switch (w) {
+            case "within": {
+                int j = i + 1;
+                while (j < m && set("about", "around", "roughly", "approximately", "approx", "exactly", "nearly", "almost", "a").contains(toks.get(j).raw)) j++;
+                if (j < m && isDistanceToken(toks.get(j).raw)) {
+                    String t = toks.get(j).raw;
+                    if (isRange(t)) { String[] ab = t.substring(3).split("x"); r.min = Integer.parseInt(ab[0]); r.dist = Integer.parseInt(ab[1]); }
+                    else if (isMin(t)) { r.min = Integer.parseInt(t.substring(3)); r.dist = Math.max(r.min * 4, r.min + 1500); }
+                    else r.dist = (int) Math.min(Long.parseLong(t.length() > 9 ? "999999999" : t), 400000);
+                    r.number = true;
+                    j++;
+                    if (j < m && toks.get(j).raw.startsWith("block")) j++;
+                    if (j < m && toks.get(j).raw.equals("away")) j++;
+                    if (j < m && (toks.get(j).raw.equals("of") || toks.get(j).raw.equals("from") || toks.get(j).raw.equals("to"))) j++;
+                    r.end = j;
+                    r.text = "within " + String.format("%,d", r.dist) + " of";
+                    return r;
+                }
+                r.end = i + 1; r.dist = step; r.text = "in";
+                return r;
+            }
+            case "next": if (n1.equals("to")) { r.end = i + 2; r.dist = Math.max(100, step); r.text = "next to"; return r; } return null;
+            case "right":
+                if (n1.equals("next") && n2.equals("to")) { r.end = i + 3; r.dist = Math.max(100, step); r.text = "next to"; return r; }
+                if (n1.equals("beside") || n1.equals("by")) { r.end = i + 2; r.dist = Math.max(100, step); r.text = "next to"; return r; }
+                return null;
+            case "beside": case "besides": case "alongside": r.end = i + 1; r.dist = Math.max(100, step); r.text = "next to"; return r;
+            case "touching": case "touches": case "touch": case "bordering": case "borders": case "border": case "neighbouring": case "neighboring":
+            case "adjacent": case "connected": case "joined": case "attached": case "meeting":
+                r.end = i + 1 + (n1.equals("to") ? 1 : 0); r.dist = step; r.text = "touching"; return r;
+            case "close": case "closer": case "near": r.end = i + 1 + ((n1.equals("to") || n1.equals("from")) ? 1 : 0); r.dist = 300; r.text = "close to"; return r;
+            case "at": case "in": case "inside": case "on": r.end = i + 1; r.dist = step; r.text = w.equals("at") ? "at" : "in"; return r;
+            default:
+                // "100 blocks from the village"
+                if (isDistanceToken(w) && !isRange(w) && !isMin(w) || isRange(w)) {
+                    int j = i + 1;
+                    if (j < m && toks.get(j).raw.startsWith("block")) j++;
+                    if (j < m && toks.get(j).raw.equals("away")) j++;
+                    if (j < m && (toks.get(j).raw.equals("from") || toks.get(j).raw.equals("of"))) {
+                        if (isRange(w)) { String[] ab = w.substring(3).split("x"); r.min = Integer.parseInt(ab[0]); r.dist = Integer.parseInt(ab[1]); }
+                        else r.dist = (int) Math.min(Long.parseLong(w.length() > 9 ? "999999999" : w), 400000);
+                        r.number = true; r.end = j + 1; r.text = "within " + String.format("%,d", r.dist) + " of";
+                        return r;
+                    }
+                }
+                return null;
+        }
+    }
+
+    private static List<RawLink> findLinks(List<Tok> toks, List<Claim> ms, int step, List<Issue> issues) {
+        List<RawLink> out = new ArrayList<>();
+        int m = toks.size();
+        int[] at = new int[m];
+        Arrays.fill(at, -1);
+        for (int k = 0; k < ms.size(); k++) for (int q = ms.get(k).start; q < ms.get(k).end; q++) at[q] = k;
+        int i = 0;
+        while (i < m) {
+            if (at[i] >= 0 || toks.get(i).punct) { i++; continue; }
+            Rel r = relAt(toks, i, step);
+            if (r == null || r.end > m) { i++; continue; }
+            // the thing it points at: "... next to THE VILLAGE"
+            int q = r.end;
+            while (q < m && at[q] < 0 && !toks.get(q).punct && OBJ_FILL.contains(toks.get(q).raw)) q++;
+            if (q >= m || at[q] < 0 || ms.get(at[q]).start != q) { i = Math.max(i + 1, r.end); continue; }
+            Claim b = ms.get(at[q]);
+            // "within 50 river of the village": a mis-typed unit, the real target comes after "of"
+            if (r.number) {
+                int e = b.end;
+                if (e < m && (toks.get(e).raw.equals("of") || toks.get(e).raw.equals("from"))) {
+                    int q2 = e + 1;
+                    while (q2 < m && at[q2] < 0 && !toks.get(q2).punct && OBJ_FILL.contains(toks.get(q2).raw)) q2++;
+                    if (q2 < m && at[q2] >= 0 && ms.get(at[q2]).start == q2) {
+                        issues.add(new Issue(Sev.INFO, "Read \"" + b.said + "\" after \"" + r.text.replace(" of", "") + "\" as a stray word, and took the distance to be from " + ms.get(at[q2]).ref.label + ".", null, null));
+                        // the stray word is not a thing in the description
+                        ms.remove(b);
+                        return findLinksAfterDrop(toks, ms, step, issues);
+                    }
+                }
+            }
+            // the thing that is that close: "THE SAVANNA is touching ..." (before) or "... next to the village IS A DESERT" (after)
+            Claim a = null;
+            boolean story = false;
+            int p = r.start - 1;
+            while (p >= 0 && at[p] < 0 && !toks.get(p).punct && (SUBJ_FILL.contains(toks.get(p).raw) || AFTER_NAME.contains(toks.get(p).raw))) { if (COPULA.contains(toks.get(p).raw)) story = true; p--; }
+            if (p >= 0 && at[p] >= 0 && ms.get(at[p]).end == p + 1 && ms.get(at[p]) != b) a = ms.get(at[p]);
+            if (a == null) {
+                story = true;
+                int z = b.end;
+                boolean cop = false;
+                while (z < m && at[z] < 0 && !toks.get(z).punct && (SUBJ_FILL.contains(toks.get(z).raw) || AFTER_NAME.contains(toks.get(z).raw))) { if (COPULA.contains(toks.get(z).raw)) cop = true; z++; }
+                if (cop && z < m && at[z] >= 0 && ms.get(at[z]).start == z && ms.get(at[z]) != b) a = ms.get(at[z]);
+            }
+            if (a != null) out.add(new RawLink(a, b, r.dist, r.min, r.text, story));
+            i = Math.max(i + 1, r.end);
+        }
+        return out;
+    }
+
+    private static List<RawLink> findLinksAfterDrop(List<Tok> toks, List<Claim> ms, int step, List<Issue> issues) {
+        return findLinks(toks, ms, step, issues);
+    }
+
+    private static int articleOf(List<Tok> toks, Claim c) {
+        int p = c.start - 1;
+        while (p >= 0 && AFTER_NAME.contains(toks.get(p).raw)) p--;
+        if (p < 0) return 0;
+        String w = toks.get(p).raw;
+        if (w.equals("a") || w.equals("an") || w.equals("another") || w.equals("some")) return 1;
+        if (w.equals("the") || w.equals("that") || w.equals("this") || w.equals("same")) return 2;
+        return 0;
+    }
+
+    /** True if {@code a} is a kind of {@code b}: "desert village" is a kind of "village". */
+    private static boolean kindOf(Lexicon.Ref a, Lexicon.Ref b) {
+        if (a.structures.isEmpty() || b.structures.isEmpty() || !a.biomes.isEmpty() || !b.biomes.isEmpty()) return false;
+        for (String sid : a.structures) {
+            Lexicon.Item it = Lexicon.byId(sid);
+            if (it != null && it.pointsFrom != null && b.structures.contains(it.pointsFrom)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * One entry per thing described. "The village" after "desert village" is the same village. With chains,
+     * "a plains biome" starts a new one and "the plains biome" is the latest plains already named.
+     */
+    private static List<Claim> formEntities(List<Tok> toks, List<Claim> ms, boolean articlesMatter, Map<Claim, Claim> entityOf) {
+        List<Claim> ents = new ArrayList<>();
+        for (Claim c : ms) {
+            c.art = articleOf(toks, c);
+            Claim hit = null;
+            if (!(articlesMatter && c.art == 1)) {
+                for (int i = ents.size() - 1; i >= 0 && hit == null; i--) {
+                    Claim e = ents.get(i);
+                    if ((e.role == Role.ABSENT) != (c.role == Role.ABSENT)) continue;
+                    boolean same = e.ref == c.ref || e.ref.label.equals(c.ref.label);
+                    boolean variant = (kindOf(e.ref, c.ref) || kindOf(c.ref, e.ref)) && (c.art == 2 || articlesMatter);
+                    if (same || variant) hit = e;
+                }
+            }
+            if (hit == null) { ents.add(c); entityOf.put(c, c); continue; }
+            entityOf.put(c, hit);
+            if (c.role == Role.TARGET) hit.role = Role.TARGET;
+            if (kindOf(c.ref, hit.ref)) hit.ref = c.ref;   // keep the more specific name
+            if (c.explicit && (!hit.explicit || c.within < hit.within)) { hit.within = c.within; hit.explicit = true; hit.minWithin = c.minWithin; }
+        }
+        return ents;
+    }
+
+    /**
+     * Hangs every claim from the spot. Claims linked to it hang from the thing they are linked to; a linked group
+     * that is not connected to the spot at all hangs from the thing named just before it (the chain); claims with no
+     * links keep the distance they were given from the spot. Typed distances always win.
+     */
+    static void orient(Reading r) {
+        r.issues.removeAll(r.chainNotes);
+        r.chainNotes.clear();
+        Claim target = null;
+        for (Claim c : r.claims) if (c.role == Role.TARGET) target = c;
+        for (Claim c : r.claims) {
+            c.parent = null;
+            c.relation = null;
+            if (c.role == Role.TARGET) { c.within = 0; c.minWithin = 0; }
+            else { c.within = c.starWithin; c.minWithin = c.starMin; }
+            if (c.userWithin >= 0 && c.role != Role.TARGET) { c.within = c.userWithin; c.minWithin = Math.max(0, c.userMin); }
+        }
+        if (target == null || r.links.isEmpty()) return;
+        Map<Claim, List<Link>> adj = new IdentityHashMap<>();
+        for (Link l : r.links) { adj.computeIfAbsent(l.a, k -> new ArrayList<>()).add(l); adj.computeIfAbsent(l.b, k -> new ArrayList<>()).add(l); }
+        Set<Claim> done = Collections.newSetFromMap(new IdentityHashMap<>());
+        walk(target, adj, done);
+        for (Claim root : r.claims) {
+            if (done.contains(root) || !adj.containsKey(root) || root.role == Role.ABSENT) continue;
+            boolean story = false;
+            for (Link l : adj.get(root)) if (l.narrative) story = true;
+            if (!story) { done.add(root); walk(root, adj, done); continue; }   // a list: it is near the spot, with its own distance
+            Claim prev = null;
+            for (Claim c : r.claims) { if (c == root) break; if (done.contains(c) && c.role != Role.ABSENT) prev = c; }
+            if (prev == null) prev = target;
+            root.parent = prev;
+            root.relation = "touching";
+            root.within = root.userWithin >= 0 ? root.userWithin : r.step;
+            root.minWithin = root.userWithin >= 0 ? Math.max(0, root.userMin) : 0;
+            Issue note = new Issue(Sev.INFO, root.label() + " was not tied to the thing you were describing, so I assumed it touches " + prev.label() + " (the thing named just before it). Say \"" + root.label().toLowerCase(Locale.ROOT) + " next to ...\" to change that.", null, null);
+            r.issues.add(note);
+            r.chainNotes.add(note);
+            done.add(root);
+            walk(root, adj, done);
+        }
+        // a thing that cannot be searched cannot carry a chain: what hangs off it hangs off what it hung from
+        boolean moved = true;
+        while (moved) {
+            moved = false;
+            for (Claim c : r.claims) {
+                if (c.parent != null && !c.parent.searchable()) {
+                    Issue note = new Issue(Sev.INFO, c.label() + " hung off " + c.parent.label() + ", which cannot be searched, so it is now measured from " + (c.parent.parent == null ? "the spot" : c.parent.parent.label()) + ".", null, null);
+                    r.issues.add(note);
+                    r.chainNotes.add(note);
+                    c.parent = c.parent.parent;
+                    moved = true;
+                }
+            }
+        }
+    }
+
+    private static void walk(Claim from, Map<Claim, List<Link>> adj, Set<Claim> done) {
+        done.add(from);
+        Deque<Claim> q = new ArrayDeque<>();
+        q.add(from);
+        while (!q.isEmpty()) {
+            Claim u = q.poll();
+            if (u.role == Role.ABSENT) continue;
+            for (Link l : adj.getOrDefault(u, List.of())) {
+                Claim v = l.a == u ? l.b : l.a;
+                if (done.contains(v)) continue;
+                done.add(v);
+                v.parent = u;
+                v.relation = l.text;
+                if (v.userWithin >= 0) { v.within = v.userWithin; v.minWithin = Math.max(0, v.userMin); }
+                else { v.within = l.dist; v.minWithin = l.min; }
+                v.explicit = true;
+                q.add(v);
+            }
+        }
+    }
+
+    /** What a typed distance means: {min, max}. "500", "1.5k", "400-800", "2 km"; null if it holds no number. */
+    public static int[] parseDistance(String text) {
+        if (text == null) return null;
+        for (Tok t : tokenise(" " + text.trim() + " ")) {
+            if (isRange(t.raw)) { String[] ab = t.raw.substring(3).split("x"); int lo = Integer.parseInt(ab[0]), hi = Integer.parseInt(ab[1]); return lo <= hi ? new int[]{lo, hi} : new int[]{hi, lo}; }
+            if (isMin(t.raw)) { int lo = Integer.parseInt(t.raw.substring(3)); return new int[]{lo, Math.max(lo * 4, lo + 1500)}; }
+            if (isNumber(t.raw)) return new int[]{0, (int) Math.min(Long.parseLong(t.raw.length() > 9 ? "999999999" : t.raw), 400000)};
+        }
+        return null;
+    }
+
     // ------------------------------------------------------------------ pieces
 
     /** Builds a claim directly (used when something other than the built-in reader produced it). */
@@ -431,7 +758,7 @@ public final class Reader {
         s = s.replaceAll("(\\d),(\\d{3})", "$1$2");
         // ranges: "400 to 800 blocks", "400-800", "between 400 and 800"
         s = java.util.regex.Pattern.compile("between\\s+(\\d+)\\s*(?:blocks?)?\\s*(?:and|-|to)\\s*(\\d+)").matcher(s).replaceAll(r -> " rng" + r.group(1) + "x" + r.group(2) + " ");
-        s = java.util.regex.Pattern.compile("(\\d+)\\s*(?:blocks?)?\\s*(?:-|\u2013|\u2014|to|until)\\s*(\\d+)(\\s*block)?").matcher(s).replaceAll(r -> {
+        s = java.util.regex.Pattern.compile("(\\d+)\\s*(?:blocks?)?\\s*(?:-|\u2013|\u2014|to|until)\\s*(\\d+)(\\s*blocks?)?").matcher(s).replaceAll(r -> {
             boolean unit = r.group(3) != null;
             if (!unit && (Long.parseLong(r.group(1)) < 20 || Long.parseLong(r.group(2)) < 20)) return java.util.regex.Matcher.quoteReplacement(r.group(0));
             return " rng" + r.group(1) + "x" + r.group(2) + (unit ? " blocks" : "") + " ";
@@ -455,6 +782,16 @@ public final class Reader {
             }
         }
         return out;
+    }
+
+    /** One edit away from a connecting word of 3+ letters ("ofr" is "for", "wiht" is "with"). */
+    private static boolean nearConnecting(String w) {
+        if (w.length() < 3 || w.length() > 6) return false;
+        for (String c : STOP) {
+            if (c.length() < 3 || Math.abs(c.length() - w.length()) > 1) continue;
+            if (osa(w, c, 1) == 1) return true;
+        }
+        return false;
     }
 
     private static boolean isNumber(String w) { return !w.isEmpty() && w.chars().allMatch(Character::isDigit); }

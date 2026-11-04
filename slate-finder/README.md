@@ -5,12 +5,28 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-131151.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-140035.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
 
-## Latest update
+## Latest update (chains, editable rows, clearer pictures)
+
+- **Chains.** Things can be described relative to each other, not just to one spot:
+  .
+   starts a new plains,  is the latest one named, and  after  is the same village.
+   means the next map cell,  about 100 blocks,  about 300,  exactly that. Something that is not tied to
+  anything in a story-style sentence is assumed to touch the thing named just before it, and it says so. The search follows the chain exactly
+  (checked against a slow brute-force version).
+- **The spot is the first thing you name** (the village in your examples), or whatever follows "searching for", "find", "looking for"...
+  Results are that thing's coordinates; with a village list they are the village's exact position.
+- **Rows under the text box are editable.** Click a distance, delete the number, type a new one (, , ), Enter.
+  Press "make this the spot" on any row to get the coordinates of that biome or structure instead. "undo my changes" puts it back.
+- **Pictures you can tell apart.** Every biome has its own animal or prop (panda, camel, goat, creaking, warden, axolotl, dolphin...) and every
+  picture has a corner badge showing the block it is known by. The badge colour is the colour dot in the rows.
+- **API key fields keep the key.** The saved key shows as dots and stays when you click the field; Show reveals it.
+
+## Earlier update
 
 - **The number of places is next to the text box**, with the FIND IT button beside it, so nothing needs scrolling.
 - **Exactly what you say.** `ocean` is the ocean only; `warm ocean`, `lukewarm ocean`, `cold ocean`, `frozen ocean`, `deep ocean`
@@ -61,5 +77,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (746 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (772 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

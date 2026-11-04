@@ -23,6 +23,64 @@ public final class ReaderTest {
         return null;
     }
 
+    /** The slow, obviously-correct version of the search, to check the fast one against. */
+    static long bruteForce(BiomeGrid g, Reader.Reading rd) {
+        int n = g.cols();
+        int c0 = Math.max(0, g.col(-20000)), c1 = Math.min(n - 1, g.col(20000));
+        Map<Reader.Claim, List<Reader.Claim>> kids = new IdentityHashMap<>();
+        Reader.Claim target = rd.target();
+        for (Reader.Claim c : rd.searchable()) {
+            if (c == target) continue;
+            Reader.Claim p = c.parent == null ? target : c.parent;
+            kids.computeIfAbsent(p, k -> new ArrayList<>()).add(c);
+        }
+        long count = 0;
+        for (int z = c0; z <= c1; z++) for (int x = c0; x <= c1; x++) if (holds(g, target, x, z, kids, c0, c1)) count++;
+        return count;
+    }
+
+    static boolean isType(BiomeGrid g, Reader.Claim c, int x, int z) {
+        int b = g.at(x, z);
+        if (b < 0) return false;
+        String id = PlaceSearch.idsOf(g)[b];
+        return c.biomes.contains(id);
+    }
+
+    static boolean holds(BiomeGrid g, Reader.Claim node, int x, int z, Map<Reader.Claim, List<Reader.Claim>> kids, int c0, int c1) {
+        if (!isType(g, node, x, z)) return false;
+        for (Reader.Claim ch : kids.getOrDefault(node, List.of())) {
+            int rmax = Math.max(1, (int) Math.ceil(ch.within / (double) g.step));
+            int rmin = ch.minWithin > 0 ? Math.max(1, (int) Math.ceil(ch.minWithin / (double) g.step)) : 0;
+            boolean any = false, inner = false;
+            for (int dz = -rmax; dz <= rmax && !(any && rmin == 0); dz++) {
+                for (int dx = -rmax; dx <= rmax; dx++) {
+                    int xx = x + dx, zz = z + dz;
+                    if (xx < 0 || zz < 0 || xx >= g.cols() || zz >= g.cols()) continue;
+                    boolean ok = ch.role == Reader.Role.ABSENT ? isType(g, ch, xx, zz) : holds(g, ch, xx, zz, kids, c0, c1);
+                    if (!ok) continue;
+                    any = true;
+                    if (rmin > 0 && Math.abs(dx) <= rmin && Math.abs(dz) <= rmin) inner = true;
+                }
+            }
+            if (ch.role == Reader.Role.ABSENT) { if (any) return false; }
+            else {
+                if (!any) return false;
+                if (rmin > 0) {
+                    // a ring: something qualifying within the outer distance but none within the inner one
+                    boolean ring = false;
+                    for (int dz = -rmax; dz <= rmax && !ring; dz++) for (int dx = -rmax; dx <= rmax && !ring; dx++) {
+                        if (Math.abs(dx) <= rmin && Math.abs(dz) <= rmin) continue;
+                        int xx = x + dx, zz = z + dz;
+                        if (xx < 0 || zz < 0 || xx >= g.cols() || zz >= g.cols()) continue;
+                        if (holds(g, ch, xx, zz, kids, c0, c1)) ring = true;
+                    }
+                    if (!ring || inner) return false;
+                }
+            }
+        }
+        return true;
+    }
+
     public static void main(String[] args) throws Exception {
         File tmp = new File(System.getProperty("java.io.tmpdir"), "slate-describe-test");
         File gridFile = DescribeTestWorld.write(new File(tmp, "grid.bin"), 20000, 64, 12345);
@@ -97,8 +155,8 @@ public final class ReaderTest {
         // comma lists, typos, and village kinds
         r = Reader.read("plains vilage, plais biome", grid);
         System.out.println(describe(r));
-        check(r.target() != null && r.target().label().equals("Plains"), "comma list: plais -> plains target");
-        check(find(r, "Plains Village") != null, "comma list: 'plains vilage' -> Plains Village");
+        check(r.target() != null && r.target().label().equals("Plains Village"), "comma list: the first thing named is the spot, got " + (r.target() == null ? "none" : r.target().label()));
+        check(find(r, "Plains") != null, "comma list: 'plais biome' -> Plains");
         r = Reader.read("desert village, savanna village, snowy village, taiga village", grid);
         check(find(r, "Desert Village") != null && find(r, "Savanna Village") != null && find(r, "Snowy Village") != null && find(r, "Taiga Village") != null, "every village kind understood: " + describe(r));
         r = Reader.read("warm ocean ruins, cold ocean ruins, beached shipwreck, ocean shipwreck", grid);
@@ -109,8 +167,8 @@ public final class ReaderTest {
         // --- a long, messy description: numbers that come before their name, a name said twice, "within"
         r = Reader.read("village, meadow biome, pale garden biome, next to the village is a dark forest biome, about  400 blocks there is  a grove and about 200 blocks there is a bamboo jungle, forest within 600 blocks, pale garden", null);
         System.out.println(describe(r));
-        check(r.target() != null && r.target().label().equals("Meadow"), "long description: meadow is the spot");
-        String[][] want = {{"Village", "100"}, {"Pale Garden", "300"}, {"Dark Forest", "100"}, {"Grove", "400"}, {"Bamboo Jungle", "200"}, {"Forest", "600"}};
+        check(r.target() != null && r.target().label().equals("Village"), "long description: the first thing named, the village, is the spot");
+        String[][] want = {{"Meadow", "300"}, {"Pale Garden", "300"}, {"Dark Forest", "100"}, {"Grove", "400"}, {"Bamboo Jungle", "200"}, {"Forest", "600"}};
         for (String[] w : want) { Reader.Claim wc = find(r, w[0]); check(wc != null && wc.within == Integer.parseInt(w[1]), "long description: " + w[0] + " within " + w[1] + ", got " + (wc == null ? "none" : wc.within)); }
         check(r.claims.size() == 7, "long description: seven distinct things, got " + r.claims.size());
         boolean complained = false;
@@ -150,6 +208,64 @@ public final class ReaderTest {
             Reader.Reading outer = Reader.read("plains, river within 6000 blocks", grid);
             long ring = PlaceSearch.run(grid, rg.searchable(), 20000, null).cells, in = PlaceSearch.run(grid, inner.searchable(), 20000, null).cells, out = PlaceSearch.run(grid, outer.searchable(), 20000, null).cells;
             check(ring == out - in && ring >= 0, "range = within the outer minus within the inner (" + ring + " vs " + out + " - " + in + ")");
+        }
+
+        // --- chains: your two real descriptions
+        r = Reader.read("desert village, forest, river, sparse jungle, jungle close to the forest, savanna within 50 river of the village warm ocean within 100 blocks of the village bambo jungle next to the jungle searching ofr the village", null);
+        check(r.target() != null && r.target().label().equals("Desert Village"), "chain 1: the village is the spot");
+        check(find(r, "Jungle") != null && find(r, "Jungle").parent == find(r, "Forest") && find(r, "Jungle").within == 300, "chain 1: jungle close to the forest");
+        check(find(r, "Bamboo Jungle") != null && find(r, "Bamboo Jungle").parent == find(r, "Jungle"), "chain 1: bamboo jungle next to the jungle (the jungle, not sparse jungle)");
+        check(find(r, "Warm Ocean") != null && find(r, "Warm Ocean").within == 100 && find(r, "Warm Ocean").parent == r.target(), "chain 1: warm ocean within 100 of the village");
+        check(find(r, "Savanna") != null && find(r, "Savanna").within == 50, "chain 1: savanna within 50");
+        boolean ofr = false;
+        for (Reader.Issue i : r.issues) if (i.text.contains("ofr")) ofr = true;
+        check(!ofr, "chain 1: 'ofr' is not reported");
+        r = Reader.read("there's a desert village and next to the village is a desert and the savana is touching a plains biome and the plains biomes is touching a jungles biome and in the jungle theirs a jungle temple and at the desert village thers a chery blossom biome and touching the cherry blossom biome is a plains biome and touching the plains biome is a warm ocean", null);
+        System.out.println(describe(r));
+        check(r.target() != null && r.target().label().equals("Desert Village"), "chain 2: the village is the spot");
+        check(r.claims.size() == 9, "chain 2: nine things (two separate plains), got " + r.claims.size());
+        List<Reader.Claim> plains = new ArrayList<>();
+        for (Reader.Claim pc : r.claims) if (pc.label().equals("Plains")) plains.add(pc);
+        check(plains.size() == 2, "chain 2: 'a plains biome' twice is two plains");
+        Reader.Claim ds = find(r, "Desert"), sv = find(r, "Savanna"), jgl = find(r, "Jungle"), jt = find(r, "Jungle Temple"), ch = find(r, "Cherry Grove"), wo = find(r, "Warm Ocean");
+        check(ds != null && ds.parent == r.target() && ds.within == 100, "chain 2: desert next to the village");
+        check(sv != null && sv.parent == ds, "chain 2: savanna touches the desert");
+        check(plains.size() == 2 && plains.get(0).parent == sv && jgl != null && jgl.parent == plains.get(0), "chain 2: savanna - plains - jungle");
+        check(jt != null && jt.parent == jgl, "chain 2: the temple is in the jungle");
+        check(ch != null && ch.parent == r.target(), "chain 2: cherry grove at the village");
+        check(plains.size() == 2 && plains.get(1).parent == ch && wo != null && wo.parent == plains.get(1), "chain 2: cherry grove - plains - warm ocean");
+
+        // --- the search follows the chain exactly (checked against a slow brute-force version)
+        for (String q : new String[]{
+            "there is plains and the river is touching the plains and a forest is next to the river",
+            "plains, next to the plains is a river and touching the river is a snowy taiga",
+            "forest, the plains is touching the forest and no desert within 600 blocks",
+            "taiga, close to the taiga is a river, the river is within 400 to 1500 blocks of a forest"}) {
+            Reader.Reading cr = Reader.read(q, grid);
+            long fast = PlaceSearch.run(grid, cr.searchable(), 20000, null).cells;
+            long slow = bruteForce(grid, cr);
+            System.out.println(describe(cr) + " -> " + fast + " cells");
+            check(fast == slow, "chain search equals brute force for '" + q + "': " + fast + " vs " + slow);
+        }
+        {
+            Reader.Reading rg = Reader.read("taiga, close to the taiga is a river, the river is within 400 to 1500 blocks of a forest", grid);
+            Reader.Claim fo2 = find(rg, "Forest");
+            check(fo2 != null && fo2.parent == find(rg, "River") && fo2.minWithin == 400 && fo2.within == 1500, "a range between two linked things: " + (fo2 == null ? "none" : fo2.parent + " " + fo2.minWithin + ".." + fo2.within));
+        }
+        // making another thing the spot, and typing a distance
+        {
+            Reader.Reading cr = Reader.read("there is plains and the river is touching the plains and a forest is next to the river", grid);
+            Reader.Claim rvr = find(cr, "River");
+            cr.makeSpot(rvr);
+            check(cr.target() == rvr && rvr.parent == null, "makeSpot: river is now the spot");
+            check(find(cr, "Plains").parent == rvr && find(cr, "Forest").parent == rvr, "makeSpot: the rest hangs from the river");
+            long viaFast = PlaceSearch.run(grid, cr.searchable(), 20000, null).cells;
+            check(viaFast == bruteForce(grid, cr), "makeSpot: search matches brute force");
+            Reader.Claim fo = find(cr, "Forest");
+            cr.setDistance(fo, 0, 1000);
+            check(fo.within == 1000 && fo.parent == rvr, "typed distance 1000 kept");
+            check(PlaceSearch.run(grid, cr.searchable(), 20000, null).cells == bruteForce(grid, cr), "typed distance: search matches brute force");
+            check(Arrays.equals(Reader.parseDistance("1.5k"), new int[]{0, 1500}) && Arrays.equals(Reader.parseDistance("400-800"), new int[]{400, 800}) && Arrays.equals(Reader.parseDistance("  250 blocks "), new int[]{0, 250}) && Reader.parseDistance("soon") == null, "parseDistance");
         }
 
         // --- numbers

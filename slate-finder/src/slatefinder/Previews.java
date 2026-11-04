@@ -28,11 +28,12 @@ public final class Previews {
     static BufferedImage render(Lexicon.Item it) {
         Art a = new Art(it.id.hashCode() * 7919L + 17);
         try {
-            if (it.structure()) structure(a, it.id); else biome(a, it.id);
+            if (it.structure()) structure(a, it.id); else { biome(a, it.id); Heroes.add(a, it.id); }
+            a.vignette(0.22);
+            Heroes.emblem(a, it);
         } catch (RuntimeException e) {
             a.fill(Art.rgb(40, 40, 50));
         }
-        a.vignette(0.22);
         return a.image();
     }
 

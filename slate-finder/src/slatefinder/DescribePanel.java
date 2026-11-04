@@ -37,11 +37,14 @@ public final class DescribePanel extends JPanel {
     private final CountView count = new CountView();
     private final JLabel mapStatus = new JLabel(" ");
     private final JTextField radiusField = field("225000");
-    private final JTextField keyField = field("");
-    private final JTextField groqField = field("");
+    private final JTextField keyField = secret();
+    private final JTextField groqField = secret();
     final Theme.Btn searchBtn = new Theme.Btn("FIND IT", true);
     private final javax.swing.Timer debounce;
     private Reader.Reading reading = new Reader.Reading();
+    /** What was changed by hand in the "What I understood" rows; kept while the sentence is edited around it. */
+    private final Map<String, int[]> distEdits = new LinkedHashMap<>();
+    private String spotKey;
     private final Viewer viewer;
     private final BookGrid book = new BookGrid();
     private final PlainField bookSearch = new PlainField("Search every biome and structure…");
@@ -244,17 +247,29 @@ public final class DescribePanel extends JPanel {
         p.add(keyRow("Gemini key", keyField, () -> {
             try { Describe.saveKey(keyField.getText().trim()); note("Gemini key saved.", Theme.GOOD); }
             catch (Exception e) { note("Could not save the key: " + e.getMessage(), Theme.BAD); }
-        }, Describe.hasKey()));
+        }, Describe.key()));
         p.add(Box.createVerticalStrut(6));
         p.add(keyRow("Groq key", groqField, () -> {
             try { Describe.saveGroqKey(groqField.getText().trim()); note("Groq key saved.", Theme.GOOD); }
             catch (Exception e) { note("Could not save the Groq key: " + e.getMessage(), Theme.BAD); }
-        }, Describe.hasGroq()));
+        }, Describe.groqKey()));
         c.add(p, BorderLayout.CENTER);
         return c;
     }
 
-    private JComponent keyRow(String label, JTextField f, Runnable save, boolean has) {
+    /** A key field: the saved key stays in it (as dots) when you click it, so nothing seems to vanish. */
+    private static JPasswordField secret() {
+        JPasswordField f = new JPasswordField();
+        f.setOpaque(false);
+        f.setBorder(new EmptyBorder(4, 8, 4, 8));
+        f.setForeground(Theme.TEXT);
+        f.setCaretColor(Theme.ACCENT);
+        f.setFont(Theme.UI);
+        f.setEchoChar('\u2022');
+        return f;
+    }
+
+    private JComponent keyRow(String label, JTextField f, Runnable save, String current) {
         JPanel r = new JPanel(new BorderLayout(8, 0));
         r.setOpaque(false);
         r.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -262,12 +277,23 @@ public final class DescribePanel extends JPanel {
         JLabel l = Theme.label(label, Theme.SMALL, Theme.MUTED);
         l.setPreferredSize(new Dimension(70, 20));
         r.add(l, BorderLayout.WEST);
-        f.setText(has ? "••••••••••" : "");
-        f.addFocusListener(new FocusAdapter() { public void focusGained(FocusEvent e) { if (f.getText().startsWith("•")) f.setText(""); } });
+        f.setText(current == null ? "" : current.trim());
         r.add(new RoundBox(f, 8), BorderLayout.CENTER);
+        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        east.setOpaque(false);
+        if (f instanceof JPasswordField) {
+            JPasswordField pf = (JPasswordField) f;
+            Pill show = new Pill("Show", Theme.MUTED, false);
+            show.onClick(() -> {
+                boolean hidden = pf.getEchoChar() != 0;
+                pf.setEchoChar(hidden ? (char) 0 : '\u2022');
+            });
+            east.add(show);
+        }
         Theme.Btn b = new Theme.Btn("Save", false).on(save);
         b.setPreferredSize(new Dimension(62, 30));
-        r.add(b, BorderLayout.EAST);
+        east.add(b);
+        r.add(east, BorderLayout.EAST);
         return r;
     }
 
@@ -430,7 +456,60 @@ public final class DescribePanel extends JPanel {
 
     private void refreshReading() {
         reading = Reader.read(text.getText(), grid);
+        if (text.getText().isBlank()) { distEdits.clear(); spotKey = null; }
+        applyEdits();
         showReading();
+    }
+
+    /** A stable name for a claim: its label, and which one of that label it is. */
+    private String keyOf(Reader.Claim c) {
+        int n = 0;
+        for (Reader.Claim o : reading.claims) { if (o == c) break; if (o.label().equals(c.label()) && (o.role == Reader.Role.ABSENT) == (c.role == Reader.Role.ABSENT)) n++; }
+        return c.label() + "/" + (c.role == Reader.Role.ABSENT ? "no" : "yes") + "#" + n;
+    }
+
+    private Reader.Claim byKey(String key) {
+        for (Reader.Claim c : reading.claims) if (keyOf(c).equals(key)) return c;
+        return null;
+    }
+
+    private void applyEdits() {
+        if (spotKey != null) {
+            Reader.Claim c = byKey(spotKey);
+            if (c != null && c.searchable() && c.role != Reader.Role.TARGET) reading.makeSpot(c);
+        }
+        boolean any = false;
+        for (Map.Entry<String, int[]> e : distEdits.entrySet()) {
+            Reader.Claim c = byKey(e.getKey());
+            if (c == null || c.role == Reader.Role.TARGET) continue;
+            c.userMin = e.getValue()[0];
+            c.userWithin = e.getValue()[1];
+            any = true;
+        }
+        if (any) Reader.orient(reading);
+    }
+
+    /** Called when a row's distance is typed in. */
+    void editDistance(Reader.Claim c, int min, int max) {
+        distEdits.put(keyOf(c), new int[]{min, max});
+        reading.setDistance(c, min, max);
+        showReading();
+        liveCount();
+    }
+
+    /** Called when a row's "make this the spot" is pressed. */
+    void chooseSpot(Reader.Claim c) {
+        spotKey = keyOf(c);
+        reading.makeSpot(c);
+        showReading();
+        liveCount();
+    }
+
+    private void resetEdits() {
+        distEdits.clear();
+        spotKey = null;
+        refreshReading();
+        liveCount();
     }
 
     private void showReading() {
@@ -439,8 +518,21 @@ public final class DescribePanel extends JPanel {
         if (text.getText().isBlank()) {
             readingBox.add(wrapLabel("Nothing yet. Name the places you can see - biomes and structures - and say how close they are. Everything it understands shows up here.", Theme.UI, Theme.DIM, LEFT_W - 60));
         } else {
+            if (!reading.claims.isEmpty()) {
+                readingBox.add(wrapLabel("Click a distance to change it. Press \u201cmake this the spot\u201d on any row to get the coordinates of that one instead.", Theme.SMALL, Theme.DIM, LEFT_W - 60));
+                readingBox.add(Box.createVerticalStrut(8));
+            }
             for (Reader.Claim c : reading.claims) readingBox.add(claimRow(c));
             if (reading.claims.isEmpty()) readingBox.add(wrapLabel("Nothing recognised yet.", Theme.UI, Theme.DIM, LEFT_W - 60));
+            if (!distEdits.isEmpty() || spotKey != null) {
+                JPanel rp = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+                rp.setOpaque(false);
+                rp.setAlignmentX(Component.LEFT_ALIGNMENT);
+                Pill reset = new Pill("undo my changes", Theme.MUTED, false);
+                reset.onClick(this::resetEdits);
+                rp.add(reset);
+                readingBox.add(rp);
+            }
             if (!reading.issues.isEmpty()) {
                 notesBox.add(Box.createVerticalStrut(8));
                 JPanel sep = new JPanel();
@@ -450,7 +542,7 @@ public final class DescribePanel extends JPanel {
                 sep.setAlignmentX(Component.LEFT_ALIGNMENT);
                 notesBox.add(sep);
                 notesBox.add(Box.createVerticalStrut(6));
-                for (Reader.Issue i : reading.issues) notesBox.add(issueRow(i));
+                for (Reader.Issue i : reading.issues) { if (spotKey != null && i.text.startsWith("Finding ")) continue; notesBox.add(issueRow(i)); }
             }
         }
         readingBox.revalidate();
@@ -465,11 +557,16 @@ public final class DescribePanel extends JPanel {
                 Graphics2D g = Theme.smooth(g0);
                 g.setColor(Theme.PANEL_HI);
                 g.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 10, 10));
+                if (c.role == Reader.Role.TARGET) {
+                    g.setColor(new Color(Theme.ACCENT.getRed(), Theme.ACCENT.getGreen(), Theme.ACCENT.getBlue(), 120));
+                    g.setStroke(new BasicStroke(1.2f));
+                    g.draw(new RoundRectangle2D.Float(.6f, .6f, getWidth() - 1.2f, getHeight() - 1.2f, 10, 10));
+                }
                 super.paintComponent(g0);
             }
         };
         r.setOpaque(false);
-        r.setBorder(new EmptyBorder(7, 10, 7, 10));
+        r.setBorder(new EmptyBorder(8, 10, 8, 10));
         r.setAlignmentX(Component.LEFT_ALIGNMENT);
         Color sw = swatch(c);
         JComponent dot = new JComponent() {
@@ -487,34 +584,147 @@ public final class DescribePanel extends JPanel {
         name.setAlignmentX(Component.LEFT_ALIGNMENT);
         mid.add(name);
         String sub = null;
-        if (c.ref.family) {
+        if (c.parent != null && c.role != Reader.Role.TARGET) {
+            String how = c.userWithin >= 0 ? "within " + String.format("%,d", c.userWithin) + " of" : (c.relation == null ? "near" : c.relation);
+            sub = "\u21b3 " + (c.role == Reader.Role.ABSENT ? "not " : "") + how + " " + c.parent.label();
+        } else if (c.ref.family) {
             List<String> names = new ArrayList<>();
             for (String id : c.ref.biomes) names.add(Lexicon.nameOf(id));
             for (String id : c.ref.structures) names.add(Lexicon.nameOf(id));
             sub = String.join(", ", names);
-        }
-        if (!c.said.equalsIgnoreCase(c.label()) && !c.ref.family) sub = "you said \"" + c.said + "\"";
-        if (sub != null) mid.add(wrapLabel(sub, Theme.SMALL, Theme.DIM, 196));
-        r.add(mid, BorderLayout.CENTER);
+        } else if (!c.said.equalsIgnoreCase(c.label())) sub = "you said \"" + c.said + "\"";
+        if (sub != null) mid.add(wrapLabel(sub, Theme.SMALL, c.parent != null ? Theme.MUTED : Theme.DIM, 250));
+        mid.add(Box.createVerticalStrut(6));
 
-        String tag; Color tc;
-        if (!c.searchable()) { tag = "CAN'T SEARCH"; tc = Theme.WARN; }
-        else if (c.role == Reader.Role.TARGET) { tag = "THE SPOT"; tc = Theme.ACCENT; }
-        else if (c.role == Reader.Role.ABSENT) { tag = "NOT within " + String.format("%,d", c.within); tc = Theme.BAD; }
-        else if (c.minWithin > 0) { tag = "NEAR  " + String.format("%,d", c.minWithin) + "–" + String.format("%,d", c.within); tc = Theme.GOOD; }
-        else { tag = "NEAR  ≤ " + String.format("%,d", c.within); tc = Theme.GOOD; }
-        Pill p = new Pill(tag, tc, true);
-        p.setActive(true);
-        JPanel east = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        east.setOpaque(false);
-        east.add(p);
-        r.add(east, BorderLayout.EAST);
+        // controls: the distance (click to type a new one) and "make this the spot"
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        controls.setOpaque(false);
+        controls.setAlignmentX(Component.LEFT_ALIGNMENT);
+        if (!c.searchable()) {
+            Pill p = new Pill("CAN'T SEARCH", Theme.WARN, true);
+            p.setActive(true);
+            controls.add(p);
+        } else if (c.role == Reader.Role.TARGET) {
+            Pill p = new Pill("THE SPOT  \u2014  coordinates are for this", Theme.ACCENT, true);
+            p.setActive(true);
+            controls.add(p);
+        } else {
+            controls.add(new DistanceChip(c, (mn, mx) -> editDistance(c, mn, mx)));
+            if (c.role != Reader.Role.ABSENT) {
+                Pill spot = new Pill("make this the spot", Theme.ACCENT, false);
+                spot.setToolTipText("Give me the coordinates of this one instead");
+                spot.onClick(() -> chooseSpot(c));
+                controls.add(spot);
+            }
+        }
+        mid.add(controls);
+        r.add(mid, BorderLayout.CENTER);
         r.setMaximumSize(new Dimension(Integer.MAX_VALUE, r.getPreferredSize().height));
         JPanel wrap = stack();
         wrap.add(r);
         wrap.add(Box.createVerticalStrut(6));
         wrap.setAlignmentX(Component.LEFT_ALIGNMENT);
         return wrap;
+    }
+
+    /** The distance on a row. Click it, delete the number, type a new one, press Enter. */
+    static final class DistanceChip extends JPanel {
+        private final Reader.Claim claim;
+        private final java.util.function.BiConsumer<Integer, Integer> commit;
+        private final CardLayout cards = new CardLayout();
+        private final JTextField field = new JTextField(9);
+        private boolean hover;
+        private boolean editing;
+
+        DistanceChip(Reader.Claim claim, java.util.function.BiConsumer<Integer, Integer> commit) {
+            super(null);
+            this.claim = claim;
+            this.commit = commit;
+            setLayout(cards);
+            setOpaque(false);
+            JComponent pill = new JComponent() {
+                @Override public Dimension getPreferredSize() { return new Dimension(getFontMetrics(Theme.SMALL_B).stringWidth(label()) + 36, 24); }
+                @Override protected void paintComponent(Graphics g0) {
+                    Graphics2D g = Theme.smooth(g0);
+                    int w = getWidth(), h = getHeight();
+                    Color c = claim.role == Reader.Role.ABSENT ? Theme.BAD : Theme.GOOD;
+                    g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), hover ? 55 : 30));
+                    g.fill(new RoundRectangle2D.Float(0, 0, w, h, h, h));
+                    g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), hover ? 210 : 140));
+                    g.setStroke(new BasicStroke(1f));
+                    g.draw(new RoundRectangle2D.Float(.5f, .5f, w - 1, h - 1, h, h));
+                    g.setFont(Theme.SMALL_B);
+                    g.setColor(Theme.mix(c, Color.WHITE, 0.3));
+                    FontMetrics fm = g.getFontMetrics();
+                    g.drawString(label(), 11, (h + fm.getAscent() - fm.getDescent()) / 2);
+                    // a little pencil: this can be edited
+                    int px = w - 17, py = h / 2 + 4;
+                    g.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                    g.setColor(hover ? Theme.TEXT : Theme.mix(c, Theme.MUTED, 0.4));
+                    g.drawLine(px, py, px + 7, py - 7);
+                    g.drawLine(px, py, px - 1, py + 1);
+                    g.drawLine(px + 2, py - 2, px + 5, py + 1);
+                }
+            };
+            pill.setCursor(Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR));
+            pill.setToolTipText("Click to change how far away this is");
+            pill.addMouseListener(new MouseAdapter() {
+                public void mouseEntered(MouseEvent e) { hover = true; pill.repaint(); }
+                public void mouseExited(MouseEvent e) { hover = false; pill.repaint(); }
+                public void mouseClicked(MouseEvent e) { startEditing(); }
+            });
+            add(pill, "pill");
+
+            field.setOpaque(false);
+            field.setForeground(Theme.TEXT);
+            field.setCaretColor(Theme.ACCENT);
+            field.setFont(Theme.SMALL_B.deriveFont(12f));
+            field.setBorder(new EmptyBorder(3, 10, 3, 10));
+            field.setToolTipText("Type blocks (500), thousands (1.5k) or a range (400-800), then press Enter. Esc cancels.");
+            field.addActionListener(e -> finish(true));
+            field.addFocusListener(new FocusAdapter() { public void focusLost(FocusEvent e) { if (editing) finish(true); } });
+            field.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "cancel");
+            field.getActionMap().put("cancel", new AbstractAction() { public void actionPerformed(ActionEvent e) { finish(false); } });
+            add(new RoundBox(field, 14), "edit");
+            cards.show(this, "pill");
+        }
+
+        String claimLabel() { return claim.label(); }
+
+        private String label() {
+            String lead = claim.role == Reader.Role.ABSENT ? "NOT within " : "NEAR \u2264 ";
+            if (claim.minWithin > 0 && claim.role != Reader.Role.ABSENT) return "NEAR  " + String.format("%,d", claim.minWithin) + "\u2013" + String.format("%,d", claim.within);
+            return lead + String.format("%,d", claim.within);
+        }
+
+        @Override public Dimension getPreferredSize() { return editing ? new Dimension(124, 26) : new Dimension(getFontMetrics(Theme.SMALL_B).stringWidth(label()) + 36, 24); }
+        @Override public Dimension getMaximumSize() { return getPreferredSize(); }
+
+        void startEditing() {
+            editing = true;
+            field.setText(claim.minWithin > 0 && claim.role != Reader.Role.ABSENT ? claim.minWithin + "-" + claim.within : String.valueOf(claim.within));
+            cards.show(this, "edit");
+            revalidate();
+            if (getParent() != null) getParent().revalidate();
+            field.requestFocusInWindow();
+            field.selectAll();
+        }
+
+        /** Commits a typed distance (also used by tests). Returns false if it holds no number. */
+        boolean typeDistance(String s) {
+            int[] d = Reader.parseDistance(s);
+            if (d == null || d[1] <= 0) return false;
+            commit.accept(d[0], d[1]);
+            return true;
+        }
+
+        private void finish(boolean save) {
+            if (!editing) return;
+            editing = false;
+            String t = field.getText();
+            if (save && !t.isBlank() && !typeDistance(t)) save = false;
+            if (!save) { cards.show(this, "pill"); revalidate(); if (getParent() != null) getParent().revalidate(); }
+        }
     }
 
     private static Color swatch(Reader.Claim c) {
@@ -662,6 +872,7 @@ public final class DescribePanel extends JPanel {
         if (grid == null) { note("The biome map is not loaded.", Theme.WARN); return; }
         if (text.getText().isBlank()) { note("Describe the place first.", Theme.WARN); return; }
         reading = Reader.read(text.getText(), grid);
+        applyEdits();
         showReading();
         final String typed = text.getText();
         final BiomeGrid g = grid;
@@ -863,6 +1074,17 @@ public final class DescribePanel extends JPanel {
 
     // for tests and screenshots
     void setDescription(String s) { text.setText(s); reparse(); }
+    /** Types a distance into the row for this label, as if clicked and typed. */
+    boolean typeDistanceFor(String label, String typed) {
+        for (Component c : allComponents(readingBox)) if (c instanceof DistanceChip && ((DistanceChip) c).claimLabel().equals(label)) return ((DistanceChip) c).typeDistance(typed);
+        return false;
+    }
+    void makeSpotFor(String label) { for (Reader.Claim c : reading.claims) if (c.label().equals(label) && c.role != Reader.Role.TARGET) { chooseSpot(c); return; } }
+    private static List<Component> allComponents(Container c) {
+        List<Component> out = new ArrayList<>();
+        for (Component x : c.getComponents()) { out.add(x); if (x instanceof Container) out.addAll(allComponents((Container) x)); }
+        return out;
+    }
     Reader.Reading currentReading() { return reading; }
     void setBookFilter(String f) { bookFilter = f; for (Pill q : filterPills) q.setActive(q.label.equals(f)); refreshBook(); }
     void setBookQuery(String q) { bookSearch.setText(q); }

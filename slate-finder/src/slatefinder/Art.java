@@ -14,6 +14,8 @@ final class Art {
     final int[] p = new int[W * H];
     final Random rnd;
     final long seed;
+    /** The ground line of the last land() drawn, so props can stand on it. */
+    int[] lastLand;
 
     Art(long seed) {
         this.seed = seed;
@@ -224,6 +226,7 @@ final class Art {
 
     /** Fills everything below the height line with a block-textured column. */
     void land(int[] h, int top, int sub, int deep, int subDepth, double amt) {
+        lastLand = h;
         for (int x = 0; x < W; x++) {
             for (int y = Math.max(0, h[x]); y < H; y++) {
                 int c;
