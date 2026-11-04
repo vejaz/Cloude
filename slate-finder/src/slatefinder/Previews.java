@@ -17,6 +17,7 @@ public final class Previews {
     private static final Map<String, BufferedImage> CACHE = new HashMap<>();
 
     public static synchronized BufferedImage get(Lexicon.Item it) {
+        if (Settings.getBool("pics3d", true)) { BufferedImage three = Previews3D.ready(it); if (three != null) return three; }
         BufferedImage im = CACHE.get(it.id);
         if (im == null) {
             im = render(it);

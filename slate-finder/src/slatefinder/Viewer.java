@@ -23,6 +23,8 @@ final class Viewer extends JComponent {
     private final Consumer<Lexicon.Item> onAdd;
     private final java.util.function.Function<Lexicon.Item, String> status;
     private boolean openNow;
+    private WorldView scene;
+    private Lexicon.Item shownItem;
 
     Viewer(Consumer<Lexicon.Item> onAdd, java.util.function.Function<Lexicon.Item, String> status) {
         this.onAdd = onAdd;
@@ -76,13 +78,17 @@ final class Viewer extends JComponent {
             timer.start();
         }
         openNow = true;
-        requestFocusInWindow();
+        setLayout(null);
+        shownItem = null;
+        showScene();
+        if (scene != null) scene.requestFocusInWindow(); else requestFocusInWindow();
         repaint();
     }
 
     void close() {
         if (!openNow) return;
         openNow = false;
+        if (scene != null) { scene.dispose(); remove(scene); scene = null; shownItem = null; }
         if (timer != null) timer.stop();
         setVisible(false);
         if (root != null && oldGlass != null) { root.setGlassPane(oldGlass); oldGlass.setVisible(false); }
@@ -92,8 +98,51 @@ final class Viewer extends JComponent {
     private void step(int d) {
         if (items.isEmpty()) return;
         index = (index + d + items.size()) % items.size();
+        showScene();
         repaint();
     }
+
+    /** The big picture is a live 3D scene you can turn and zoom, when there is one for this entry. */
+    private void showScene() {
+        Lexicon.Item it = items.get(index);
+        if (shownItem == it && (scene != null || !wants3D(it))) return;
+        shownItem = it;
+        if (scene != null) { scene.dispose(); remove(scene); scene = null; }
+        if (!wants3D(it)) return;
+        try {
+            Previews3D.Scene sc = Previews3D.scene(it);
+            WorldView wv = new WorldView(sc.world);
+            wv.tx = wv.mx = wv.wx = sc.fx; wv.tz = wv.mz = wv.wz = sc.fz;
+            wv.dist = sc.dist; wv.oyaw = sc.yaw; wv.opitch = sc.pitch;
+            wv.opts.sunElev = sc.opts.sunElev; wv.opts.sunAz = sc.opts.sunAz; wv.opts.maxDist = Math.max(sc.opts.maxDist, 300);
+            wv.showMarkers = false; wv.showSites = false; wv.showGrid = false; wv.showCompass = true; wv.arrowsMove = false;
+            wv.quality = 2;
+            wv.wy = sc.world.topAt((int) sc.fx, (int) sc.fz) + 1.62;
+            add(wv);
+            scene = wv;
+            layoutScene();
+            wv.render();
+        } catch (RuntimeException e) { scene = null; }
+    }
+
+    private static boolean wants3D(Lexicon.Item it) { return Settings.getBool("pics3d", true) && Previews3D.has3D(it); }
+
+    private Rectangle box() {
+        int w = getWidth(), h = getHeight();
+        int maxW = Math.min(w - 220, 1280), maxH = h - 210;
+        int iw = maxW, ih = iw * 9 / 16;
+        if (ih > maxH) { ih = maxH; iw = ih * 16 / 9; }
+        iw = Math.max(320, iw); ih = iw * 9 / 16;
+        return new Rectangle((w - iw) / 2, (h - ih) / 2 - 36, iw, ih);
+    }
+
+    private void layoutScene() {
+        if (scene == null) return;
+        Rectangle b = box();
+        scene.setBounds(b.x, b.y, b.width, b.height);
+    }
+
+    @Override public void doLayout() { layoutScene(); }
 
     private void add() {
         if (items.isEmpty()) return;
@@ -129,7 +178,7 @@ final class Viewer extends JComponent {
         g.setClip(new RoundRectangle2D.Float(x, y, iw, ih, 10, 10));
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
         g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, f));
-        g.drawImage(img, x, y, iw, ih, null);
+        if (scene == null) g.drawImage(img, x, y, iw, ih, null);
         g.setComposite(AlphaComposite.SrcOver);
         g.setClip(clip);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -161,7 +210,7 @@ final class Viewer extends JComponent {
         // buttons
         int bw = 190, bh = 38;
         addBtn.setBounds(x + iw - bw, cy - 14, bw, bh);
-        g.setColor(hoverAdd ? Theme.mix(Theme.ACCENT, Color.WHITE, 0.15) : Theme.ACCENT);
+        g.setColor(hoverAdd ? Theme.mix(Skin.accent(), Color.WHITE, 0.15) : Skin.accent());
         g.fill(new RoundRectangle2D.Float(addBtn.x, addBtn.y, bw, bh, 10, 10));
         g.setColor(new Color(0x06222A));
         g.setFont(Theme.UI_BOLD.deriveFont(13f));

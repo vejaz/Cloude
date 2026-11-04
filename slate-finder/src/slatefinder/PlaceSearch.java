@@ -188,10 +188,16 @@ public final class PlaceSearch {
         Map<Reader.Claim, List<Reader.Claim>> kids;
         private final ArrayDeque<byte[]> pool = new ArrayDeque<>();
         private final byte[] tmp;
+        private short[] dist;
 
         Run(BiomeGrid grid, int c0, int w, Cancel cancel, Result res) {
             this.grid = grid; this.c0 = c0; this.w = w; this.cancel = cancel; this.res = res;
             this.tmp = new byte[w * w];
+        }
+
+        void disc(byte[] a, int r) {
+            if (r > 2 && dist == null) dist = new short[w * w];
+            dilateDisc(a, tmp, dist, w, r);
         }
 
         boolean stop() { return cancel != null && cancel.cancelled(); }
@@ -255,9 +261,9 @@ public final class PlaceSearch {
             if (c.minWithin > 0 && c.role != Reader.Role.ABSENT) {
                 inner = get();
                 System.arraycopy(src, 0, inner, 0, src.length);
-                dilate(inner, tmp, w, Math.max(1, (int) Math.ceil(c.minWithin / (double) grid.step)));
+                disc(inner, Math.max(1, (int) Math.ceil(c.minWithin / (double) grid.step)));
             }
-            dilate(src, tmp, w, r);
+            disc(src, r);
             if (inner != null) { for (int i = 0; i < src.length; i++) if (inner[i] != 0) src[i] = 0; release(inner); }
             if (c.role == Reader.Role.ABSENT) for (int i = 0; i < src.length; i++) src[i] = (byte) (src[i] != 0 ? 0 : 1);
             return src;
@@ -311,6 +317,48 @@ public final class PlaceSearch {
         long n = 0;
         for (byte b : a) if (b != 0) n++;
         return n;
+    }
+
+    /** Whether a cell offset is within r cells, as the circle the distance means (an octagon within 8% of one). */
+    static boolean inKernel(int dx, int dz, int r) {
+        dx = Math.abs(dx); dz = Math.abs(dz);
+        if (r <= 2) return dx <= r && dz <= r;
+        int a = (int) Math.round(0.414 * r), b = r - a;
+        return Math.max(dx - a, 0) + Math.max(dz - a, 0) <= b;
+    }
+
+    /**
+     * src becomes 1 wherever any 1 lies within r cells, as a circle: a square of the first part of the radius, then a
+     * diamond of the rest (their sum is an octagon, close to a circle). Two sliding passes and two sweeps over the map.
+     */
+    static void dilateDisc(byte[] src, byte[] tmp, short[] dist, int w, int r) {
+        if (r <= 2) { dilate(src, tmp, w, r); return; }
+        int a = (int) Math.round(0.414 * r), b = r - a;
+        if (a > 0) dilate(src, tmp, w, a);
+        final short INF = Short.MAX_VALUE;
+        int n = w * w;
+        for (int i = 0; i < n; i++) dist[i] = src[i] != 0 ? 0 : INF;
+        for (int z = 0; z < w; z++) {
+            int base = z * w;
+            for (int x = 0; x < w; x++) {
+                int i = base + x;
+                int d = dist[i];
+                if (x > 0 && dist[i - 1] + 1 < d) d = dist[i - 1] + 1;
+                if (z > 0 && dist[i - w] + 1 < d) d = dist[i - w] + 1;
+                dist[i] = (short) Math.min(d, INF);
+            }
+        }
+        for (int z = w - 1; z >= 0; z--) {
+            int base = z * w;
+            for (int x = w - 1; x >= 0; x--) {
+                int i = base + x;
+                int d = dist[i];
+                if (x < w - 1 && dist[i + 1] + 1 < d) d = dist[i + 1] + 1;
+                if (z < w - 1 && dist[i + w] + 1 < d) d = dist[i + w] + 1;
+                dist[i] = (short) Math.min(d, INF);
+                src[i] = (byte) (d <= b ? 1 : 0);
+            }
+        }
     }
 
     /** src becomes 1 wherever any 1 lies within r cells (a square window), using two sliding passes. */
@@ -393,6 +441,130 @@ public final class PlaceSearch {
             out.add(rg);
             if (out.size() > 20000) { truncatedFlag[0] = true; break; }
         }
+        return out;
+    }
+
+    // ------------------------------------------------------------------ where each described thing is, around a chosen spot
+
+    /** One thing from the description, found near the chosen coordinates. */
+    public static final class Witness {
+        public final Reader.Claim claim;
+        public boolean found;
+        public int x, z;
+        public double dist;
+        public boolean exact;
+        public Reader.Claim parent;
+        public String text = "";
+        Witness(Reader.Claim c) { this.claim = c; }
+    }
+
+    /**
+     * For a place chosen on the map, finds where each biome and structure of the description actually is around it,
+     * following the chain: each thing is looked for near the thing it was described next to.
+     */
+    public static List<Witness> witnesses(BiomeGrid grid, List<Reader.Claim> claims, int mx, int mz) {
+        List<Witness> out = new ArrayList<>();
+        Reader.Claim target = null;
+        for (Reader.Claim c : claims) if (c.role == Reader.Role.TARGET && c.searchable()) { target = c; break; }
+        if (target == null) return out;
+        Map<Reader.Claim, List<Reader.Claim>> kids = new IdentityHashMap<>();
+        int span = 0;
+        for (Reader.Claim c : claims) {
+            if (c == target || !c.searchable()) continue;
+            Reader.Claim p = c.parent;
+            if (p == null || p == c || !claims.contains(p)) p = target;
+            kids.computeIfAbsent(p, k -> new ArrayList<>()).add(c);
+        }
+        span = depthSpan(kids, target);
+        int step = grid.step;
+        int R = Math.min(9000, span + 3 * step);
+        int colM = grid.col(mx), rowM = grid.col(mz);
+        if (colM < 0 || rowM < 0) return out;
+        int reach = R / step + 2;
+        int c0 = Math.max(0, Math.min(colM, rowM) - reach);
+        int w = Math.min(grid.cols() - c0, Math.max(colM, rowM) - c0 + reach + 1);
+        Result scratch = new Result();
+        Run run = new Run(grid, c0, w, null, scratch);
+        run.kids = kids;
+        Map<Reader.Claim, Witness> byClaim = new IdentityHashMap<>();
+        Witness tw = new Witness(target);
+        tw.found = true; tw.x = mx; tw.z = mz; tw.exact = true; tw.text = "the spot";
+        byClaim.put(target, tw);
+        place(run, grid, target, colM - c0, rowM - c0, tw, byClaim, c0, w);
+        for (Reader.Claim c : claims) {
+            Witness x = byClaim.get(c);
+            if (x == null) {
+                x = new Witness(c);
+                if (c.role == Reader.Role.ABSENT) { x.found = true; x.text = "none within " + String.format("%,d", c.within) + " blocks, as described"; }
+                else x.text = "not found";
+                byClaim.put(c, x);
+            }
+            out.add(x);
+        }
+        return out;
+    }
+
+    private static int depthSpan(Map<Reader.Claim, List<Reader.Claim>> kids, Reader.Claim n) {
+        int best = 0;
+        for (Reader.Claim ch : kids.getOrDefault(n, List.of())) best = Math.max(best, Math.max(1, ch.within) + depthSpan(kids, ch));
+        return best;
+    }
+
+    private static void place(Run run, BiomeGrid grid, Reader.Claim node, int ac, int ar, Witness nodeW, Map<Reader.Claim, Witness> out, int c0, int w) {
+        for (Reader.Claim ch : run.kids.getOrDefault(node, List.of())) {
+            Witness cw = new Witness(ch);
+            cw.parent = node;
+            out.put(ch, cw);
+            if (ch.role == Reader.Role.ABSENT) { cw.found = true; cw.text = "none within " + String.format("%,d", ch.within) + " blocks of " + node.label() + ", as described"; continue; }
+            byte[] ok = run.where(ch);
+            int r = Math.max(1, (int) Math.ceil(ch.within / (double) grid.step));
+            int rmin = ch.minWithin > 0 ? Math.max(1, (int) Math.ceil(ch.minWithin / (double) grid.step)) : 0;
+            double best = Double.MAX_VALUE;
+            int bc = -1, br = -1;
+            for (int dr = -r; dr <= r; dr++) {
+                int rr = ar + dr;
+                if (rr < 0 || rr >= w) continue;
+                for (int dc = -r; dc <= r; dc++) {
+                    int cc = ac + dc;
+                    if (cc < 0 || cc >= w) continue;
+                    if (!inKernel(dc, dr, r)) continue;
+                    if (rmin > 0 && inKernel(dc, dr, rmin)) continue;
+                    if (ok[rr * w + cc] == 0) continue;
+                    double d = (double) dc * dc + (double) dr * dr;
+                    if (d < best) { best = d; bc = cc; br = rr; }
+                }
+            }
+            run.release(ok);
+            if (bc < 0) { cw.text = "not found near " + node.label(); continue; }
+            cw.found = true;
+            cw.x = grid.worldX(c0 + bc);
+            cw.z = grid.worldX(c0 + br);
+            // a structure with a position list: the real position, the nearest one to the thing it hangs from
+            if (!ch.structures.isEmpty()) {
+                double bd = Double.MAX_VALUE;
+                int ax = nodeW.x, az = nodeW.z;
+                for (String kind : ch.structures) {
+                    Points p = points(kind, grid);
+                    if (p == null) continue;
+                    for (int i = 0; i < p.xs.length; i++) {
+                        double d = Math.hypot(p.xs[i] - cw.x, p.zs[i] - cw.z);
+                        if (d < grid.step * 1.2 && d < bd) { bd = d; cw.x = p.xs[i]; cw.z = p.zs[i]; cw.exact = true; }
+                    }
+                }
+            }
+            cw.dist = Math.hypot(cw.x - nodeW.x, cw.z - nodeW.z);
+            String how = ch.relation != null ? ch.relation : "near";
+            cw.text = String.format("%s %s, %,.0f blocks away", how, node.label(), cw.dist);
+            place(run, grid, ch, bc, br, cw, out, c0, w);
+        }
+    }
+
+    /** The listed positions of a structure on this map (variants are cut down to their biomes). */
+    public static int[][] listedPoints(String kind, BiomeGrid grid) {
+        Points p = points(kind, grid);
+        if (p == null) return new int[0][];
+        int[][] out = new int[p.xs.length][];
+        for (int i = 0; i < out.length; i++) out[i] = new int[]{p.xs[i], p.zs[i]};
         return out;
     }
 

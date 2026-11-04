@@ -50,6 +50,7 @@ public final class DescribePanel extends JPanel {
     private final PlainField bookSearch = new PlainField("Search every biome and structure…");
     private String bookFilter = "All";
     private final List<Pill> filterPills = new ArrayList<>();
+    private JPanel pillsPanel;
     private final JLabel bookCount = new JLabel(" ");
     private volatile boolean searching;
     private volatile boolean liveBusy;
@@ -86,8 +87,14 @@ public final class DescribePanel extends JPanel {
             public void actionPerformed(ActionEvent e) { viewer.close(); }
         });
 
+        Settings.onChange(() -> SwingUtilities.invokeLater(this::applyLook));
         loadGridInBackground();
-        Thread warm = new Thread(() -> { for (Lexicon.Item it : Lexicon.items()) Previews.get(it); SwingUtilities.invokeLater(book::repaint); }, "describe-previews");
+        Thread warm = new Thread(() -> {
+            for (Lexicon.Item it : Lexicon.items()) Previews.get(it);
+            SwingUtilities.invokeLater(book::repaint);
+            if (Settings.getBool("pics3d", true)) Previews3D.warm(() -> SwingUtilities.invokeLater(book::repaint));
+        }, "describe-previews");
+        warm.setPriority(Thread.MIN_PRIORITY);
         warm.setDaemon(true);
         warm.start();
     }
@@ -110,7 +117,7 @@ public final class DescribePanel extends JPanel {
         return sp;
     }
 
-    private static final class Column extends JPanel implements Scrollable {
+    static final class Column extends JPanel implements Scrollable {
         Column() { setLayout(new BoxLayout(this, BoxLayout.Y_AXIS)); setOpaque(false); }
         public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
         public int getScrollableUnitIncrement(Rectangle r, int o, int d) { return 18; }
@@ -263,7 +270,7 @@ public final class DescribePanel extends JPanel {
         f.setOpaque(false);
         f.setBorder(new EmptyBorder(4, 8, 4, 8));
         f.setForeground(Theme.TEXT);
-        f.setCaretColor(Theme.ACCENT);
+        f.setCaretColor(Skin.accent());
         f.setFont(Theme.UI);
         f.setEchoChar('\u2022');
         return f;
@@ -320,17 +327,11 @@ public final class DescribePanel extends JPanel {
         sb.setAlignmentX(Component.LEFT_ALIGNMENT);
         top.add(sb);
         top.add(Box.createVerticalStrut(8));
-        JPanel pills = new JPanel(new WrapLayout(6, 6));
-        pills.setOpaque(false);
-        pills.setAlignmentX(Component.LEFT_ALIGNMENT);
-        for (String f : new String[]{"All", "Biomes", "Structures"}) {
-            Pill p = new Pill(f, Theme.ACCENT, true);
-            p.setActive(f.equals(bookFilter));
-            p.onClick(() -> { bookFilter = f; for (Pill q : filterPills) q.setActive(q.label.equals(f)); refreshBook(); });
-            filterPills.add(p);
-            pills.add(p);
-        }
-        top.add(pills);
+        pillsPanel = new JPanel(new WrapLayout(6, 6));
+        pillsPanel.setOpaque(false);
+        pillsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        buildPills();
+        top.add(pillsPanel);
         bookCount.setFont(Theme.SMALL);
         bookCount.setForeground(Theme.DIM);
         bookCount.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -377,6 +378,36 @@ public final class DescribePanel extends JPanel {
         book.statusOf = this::statusOf;
         refreshBook();
         return c;
+    }
+
+    private void buildPills() {
+        pillsPanel.removeAll();
+        filterPills.clear();
+        for (String f : new String[]{"All", "Biomes", "Structures"}) {
+            Pill p = new Pill(f, Skin.accent(), true);
+            p.setActive(f.equals(bookFilter));
+            p.onClick(() -> { bookFilter = f; for (Pill q : filterPills) q.setActive(q.label.equals(f)); refreshBook(); });
+            filterPills.add(p);
+            pillsPanel.add(p);
+        }
+        Pill gear = new Pill("\u2699  Settings", Theme.MUTED, false);
+        gear.onClick(() -> { SettingsDialog dlg = new SettingsDialog(this); dlg.setVisible(true); });
+        pillsPanel.add(gear);
+        pillsPanel.revalidate();
+        pillsPanel.repaint();
+    }
+
+    /** Called when a setting changes: redraw everything that uses the accent colour or the picture size. */
+    private void applyLook() {
+        buildPills();
+        showReading();
+        book.revalidate();
+        book.repaint();
+        searchBtn.repaint();
+        count.repaint();
+        funnelBox.repaint();
+        if (!resultsBox.getComponents().equals(null)) resultsBox.repaint();
+        repaint();
     }
 
     private void refreshBook() {
@@ -558,7 +589,7 @@ public final class DescribePanel extends JPanel {
                 g.setColor(Theme.PANEL_HI);
                 g.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 10, 10));
                 if (c.role == Reader.Role.TARGET) {
-                    g.setColor(new Color(Theme.ACCENT.getRed(), Theme.ACCENT.getGreen(), Theme.ACCENT.getBlue(), 120));
+                    g.setColor(new Color(Skin.accent().getRed(), Skin.accent().getGreen(), Skin.accent().getBlue(), 120));
                     g.setStroke(new BasicStroke(1.2f));
                     g.draw(new RoundRectangle2D.Float(.6f, .6f, getWidth() - 1.2f, getHeight() - 1.2f, 10, 10));
                 }
@@ -605,13 +636,13 @@ public final class DescribePanel extends JPanel {
             p.setActive(true);
             controls.add(p);
         } else if (c.role == Reader.Role.TARGET) {
-            Pill p = new Pill("THE SPOT  \u2014  coordinates are for this", Theme.ACCENT, true);
+            Pill p = new Pill("THE SPOT  \u2014  coordinates are for this", Skin.accent(), true);
             p.setActive(true);
             controls.add(p);
         } else {
             controls.add(new DistanceChip(c, (mn, mx) -> editDistance(c, mn, mx)));
             if (c.role != Reader.Role.ABSENT) {
-                Pill spot = new Pill("make this the spot", Theme.ACCENT, false);
+                Pill spot = new Pill("make this the spot", Skin.accent(), false);
                 spot.setToolTipText("Give me the coordinates of this one instead");
                 spot.onClick(() -> chooseSpot(c));
                 controls.add(spot);
@@ -677,7 +708,7 @@ public final class DescribePanel extends JPanel {
 
             field.setOpaque(false);
             field.setForeground(Theme.TEXT);
-            field.setCaretColor(Theme.ACCENT);
+            field.setCaretColor(Skin.accent());
             field.setFont(Theme.SMALL_B.deriveFont(12f));
             field.setBorder(new EmptyBorder(3, 10, 3, 10));
             field.setToolTipText("Type blocks (500), thousands (1.5k) or a range (400-800), then press Enter. Esc cancels.");
@@ -737,7 +768,7 @@ public final class DescribePanel extends JPanel {
         JPanel r = new JPanel(new BorderLayout(8, 0));
         r.setOpaque(false);
         r.setAlignmentX(Component.LEFT_ALIGNMENT);
-        Color c = i.sev == Reader.Sev.ERROR ? Theme.BAD : i.sev == Reader.Sev.WARN ? Theme.WARN : Theme.ACCENT;
+        Color c = i.sev == Reader.Sev.ERROR ? Theme.BAD : i.sev == Reader.Sev.WARN ? Theme.WARN : Skin.accent();
         String glyph = i.sev == Reader.Sev.ERROR ? "✕" : i.sev == Reader.Sev.WARN ? "!" : "i";
         JComponent ic = new JComponent() {
             @Override protected void paintComponent(Graphics g0) {
@@ -756,7 +787,7 @@ public final class DescribePanel extends JPanel {
         mid.add(wrapLabel(i.text, Theme.SMALL, i.sev == Reader.Sev.INFO ? Theme.MUTED : Theme.TEXT, LEFT_W - 120));
         r.add(mid, BorderLayout.CENTER);
         if (i.from != null && i.to != null) {
-            Pill fix = new Pill("use \"" + i.to + "\"", Theme.ACCENT, false);
+            Pill fix = new Pill("use \"" + i.to + "\"", Skin.accent(), false);
             fix.onClick(() -> replaceWord(i.from, i.to));
             JPanel e = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
             e.setOpaque(false);
@@ -851,13 +882,13 @@ public final class DescribePanel extends JPanel {
                 if (!shown.equals(label)) shown += "…";
                 g.drawString(shown, 0, 11);
                 String cnt = String.format("%,d", n);
-                g.setColor(last ? Theme.ACCENT : Theme.TEXT);
+                g.setColor(last ? Skin.accent() : Theme.TEXT);
                 g.setFont(Theme.SMALL_B);
                 g.drawString(cnt, w - g.getFontMetrics().stringWidth(cnt), 11);
                 g.setColor(Theme.PANEL_HI);
                 g.fill(new RoundRectangle2D.Float(0, 17, w, 5, 5, 5));
                 double f = n <= 0 ? 0 : Math.max(0.012, Math.sqrt(n / (double) max));
-                g.setColor(last ? Theme.ACCENT : Theme.ACCENT_DK);
+                g.setColor(last ? Skin.accent() : Skin.accentDark());
                 g.fill(new RoundRectangle2D.Float(0, 17, (float) (w * f), 5, 5, 5));
             }
         };
@@ -1001,7 +1032,7 @@ public final class DescribePanel extends JPanel {
         n.setPreferredSize(new Dimension(30, 24));
         row.add(n, BorderLayout.WEST);
         JPanel mid = stack();
-        JLabel xy = Theme.label(String.format("X %,d    Z %,d", r.nearX, r.nearZ), Theme.MONO_B, Theme.ACCENT);
+        JLabel xy = Theme.label(String.format("X %,d    Z %,d", r.nearX, r.nearZ), Theme.MONO_B, Skin.accent());
         xy.setAlignmentX(Component.LEFT_ALIGNMENT);
         mid.add(xy);
         long area = r.cells * (long) step * step;
@@ -1010,12 +1041,15 @@ public final class DescribePanel extends JPanel {
         mid.add(wrapLabel(size, Theme.SMALL, Theme.DIM, 190));
         if (!r.exact) mid.add(wrapLabel(String.format("X %,d to %,d   Z %,d to %,d", r.minX, r.maxX, r.minZ, r.maxZ), Theme.SMALL, Theme.DIM, 190));
         row.add(mid, BorderLayout.CENTER);
+        Theme.Btn map = new Theme.Btn("See map", true).on(() -> openMap(r.nearX, r.nearZ));
+        map.setPreferredSize(new Dimension(78, 30));
         Theme.Btn copy = new Theme.Btn("Copy", false).on(() -> copy(r.nearX, r.nearZ));
-        copy.setPreferredSize(new Dimension(58, 28));
-        Theme.Btn use = new Theme.Btn("Use", true).on(() -> { if (app != null) app.useDescribedArea(r.nearX, r.nearZ); });
-        use.setPreferredSize(new Dimension(58, 28));
-        JPanel btns = new JPanel(new GridLayout(2, 1, 0, 6));
+        copy.setPreferredSize(new Dimension(78, 28));
+        Theme.Btn use = new Theme.Btn("Use", false).on(() -> { if (app != null) app.useDescribedArea(r.nearX, r.nearZ); });
+        use.setPreferredSize(new Dimension(78, 28));
+        JPanel btns = new JPanel(new GridLayout(3, 1, 0, 6));
         btns.setOpaque(false);
+        btns.add(map);
         btns.add(copy);
         btns.add(use);
         JPanel east = new JPanel(new BorderLayout());
@@ -1033,7 +1067,15 @@ public final class DescribePanel extends JPanel {
     private void copy(int x, int z) {
         String s = x + " ~ " + z;
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(s), null);
-        note("Copied " + s + " - paste it after /tp vejasss", Theme.GOOD);
+        note("Copied " + s + " - paste it after /tp " + Settings.player(), Theme.GOOD);
+        Toast.show(this, "Copied  " + s + "   \u2014   paste it after /tp " + Settings.player(), Skin.accent());
+    }
+
+    /** Opens the map for a place that was found. */
+    void openMap(int x, int z) {
+        if (grid == null) { Toast.show(this, "The biome map is not loaded yet.", Theme.WARN); return; }
+        try { MapWindow.open(this, grid, reading, x, z); }
+        catch (RuntimeException e) { Toast.show(this, "Could not open the map: " + e.getMessage(), Theme.BAD); }
     }
 
     private void note(String s, Color c) {
@@ -1100,7 +1142,7 @@ public final class DescribePanel extends JPanel {
         f.setOpaque(false);
         f.setBorder(new EmptyBorder(4, 8, 4, 8));
         f.setForeground(Theme.TEXT);
-        f.setCaretColor(Theme.ACCENT);
+        f.setCaretColor(Skin.accent());
         f.setFont(Theme.UI);
         return f;
     }
@@ -1113,9 +1155,9 @@ public final class DescribePanel extends JPanel {
             setWrapStyleWord(true);
             setOpaque(false);
             setForeground(Theme.TEXT);
-            setCaretColor(Theme.ACCENT);
+            setCaretColor(Skin.accent());
             setBorder(new EmptyBorder(10, 12, 10, 12));
-            setSelectionColor(Theme.ACCENT_DK);
+            setSelectionColor(Skin.accentDark());
             setSelectedTextColor(Theme.TEXT);
         }
         void setHint(String h) { hint = h; }
@@ -1144,7 +1186,7 @@ public final class DescribePanel extends JPanel {
             setOpaque(false);
             setBorder(new EmptyBorder(6, 12, 6, 12));
             setForeground(Theme.TEXT);
-            setCaretColor(Theme.ACCENT);
+            setCaretColor(Skin.accent());
             setFont(Theme.UI.deriveFont(14f));
         }
         @Override protected void paintComponent(Graphics g0) {
@@ -1177,7 +1219,7 @@ public final class DescribePanel extends JPanel {
             Graphics2D g = Theme.smooth(g0);
             g.setColor(Theme.PANEL_HI);
             g.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), radius, radius));
-            g.setColor(focus ? Theme.ACCENT_DK : Theme.LINE);
+            g.setColor(focus ? Skin.accentDark() : Theme.LINE);
             g.setStroke(new BasicStroke(focus ? 1.5f : 1f));
             g.draw(new RoundRectangle2D.Float(.5f, .5f, getWidth() - 1, getHeight() - 1, radius, radius));
             super.paintComponent(g0);
@@ -1278,7 +1320,9 @@ public final class DescribePanel extends JPanel {
         ThumbOpen onThumb;
         java.util.function.Consumer<Lexicon.Item> onAdd;
         java.util.function.Function<Lexicon.Item, String> statusOf = it -> null;
-        private static final int CW = 176, CH = 170, GAP = 12;
+        private static final int GAP = 12;
+        private static int cw() { switch (Settings.get("cardSize", "medium")) { case "small": return 150; case "large": return 236; default: return 176; } }
+        private static int ch() { return (cw() - 12) * 9 / 16 + 74; }
 
         BookGrid() {
             setOpaque(false);
@@ -1300,13 +1344,13 @@ public final class DescribePanel extends JPanel {
 
         void setItems(List<Lexicon.Item> l) { items = l; revalidate(); repaint(); }
 
-        private int cols() { return Math.max(1, (getWidth() + GAP) / (CW + GAP)); }
+        private int cols() { return Math.max(1, (getWidth() + GAP) / (cw() + GAP)); }
 
         private Rectangle cell(int i) {
             int cols = cols();
-            int used = cols * CW + (cols - 1) * GAP;
+            int used = cols * cw() + (cols - 1) * GAP;
             int x0 = Math.max(0, (getWidth() - used) / 2);
-            return new Rectangle(x0 + (i % cols) * (CW + GAP), (i / cols) * (CH + GAP), CW, CH);
+            return new Rectangle(x0 + (i % cols) * (cw() + GAP), (i / cols) * (ch() + GAP), cw(), ch());
         }
 
         private Rectangle thumbRect(Rectangle c) { return new Rectangle(c.x + 6, c.y + 6, c.width - 12, (c.width - 12) * 9 / 16); }
@@ -1332,7 +1376,7 @@ public final class DescribePanel extends JPanel {
         @Override public Dimension getPreferredSize() {
             int cols = cols();
             int rows = (items.size() + cols - 1) / cols;
-            return new Dimension(100, Math.max(40, rows * (CH + GAP)));
+            return new Dimension(100, Math.max(40, rows * (ch() + GAP)));
         }
 
         @Override protected void paintComponent(Graphics g0) {
@@ -1355,7 +1399,7 @@ public final class DescribePanel extends JPanel {
         private void paintCard(Graphics2D g, Lexicon.Item it, Rectangle c, boolean hover, boolean overThumb) {
             g.setColor(hover ? Theme.PANEL_HI : Theme.mix(Theme.PANEL, Theme.PANEL_HI, 0.5));
             g.fill(new RoundRectangle2D.Float(c.x, c.y, c.width, c.height, 12, 12));
-            g.setColor(hover ? Theme.ACCENT_DK : Theme.LINE_SOFT);
+            g.setColor(hover ? Skin.accentDark() : Theme.LINE_SOFT);
             g.setStroke(new BasicStroke(1f));
             g.draw(new RoundRectangle2D.Float(c.x + .5f, c.y + .5f, c.width - 1, c.height - 1, 12, 12));
             Rectangle t = thumbRect(c);

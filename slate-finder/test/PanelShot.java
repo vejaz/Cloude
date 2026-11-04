@@ -79,9 +79,22 @@ public final class PanelShot {
         ImageIO.write(snap(f.getRootPane()), "png", new File(out, "09-search-typo.png"));
         SwingUtilities.invokeAndWait(() -> { app[0].describe.setBookQuery(""); });
         settle(300);
+        // the "See map" button's action opens the map window without trouble
+        final int[] spot = new int[2];
+        SwingUtilities.invokeAndWait(() -> {
+            Reader.Reading rr = app[0].describe.currentReading();
+            PlaceSearch.Result r2 = PlaceSearch.run(g0, rr.searchable(), 60000, null);
+            if (!r2.regions.isEmpty()) { spot[0] = r2.regions.get(0).nearX; spot[1] = r2.regions.get(0).nearZ; }
+        });
+        final boolean[] mapOk = new boolean[1];
+        SwingUtilities.invokeAndWait(() -> { try { app[0].describe.openMap(spot[0], spot[1]); mapOk[0] = true; } catch (RuntimeException ex) { ex.printStackTrace(); } });
+        settle(5000);
+        System.out.println("map window opened: " + mapOk[0]);
+        for (Window win : Window.getWindows()) if (win instanceof MapWindow) win.dispose();
+        settle(300);
         // click a book picture: open the viewer, then press Escape
         SwingUtilities.invokeAndWait(() -> app[0].describe.bookGrid().onThumb.open(Lexicon.items(), 0));
-        settle(700);
+        settle(4500);
         ImageIO.write(snap(f.getRootPane()), "png", new File(out, "05-viewer.png"));
         final boolean[] open = new boolean[3];
         SwingUtilities.invokeAndWait(() -> open[0] = app[0].describe.viewer().isOpen());
@@ -101,6 +114,17 @@ public final class PanelShot {
         settle(300);
         System.out.println("viewer open before Esc: " + open[0] + ", after: " + open[1]);
         ImageIO.write(snap(f.getRootPane()), "png", new File(out, "06-closed.png"));
-        System.exit(open[0] && !open[1] ? 0 : 2);
+        // the settings dialog, and a new accent colour reaching the tab
+        SwingUtilities.invokeAndWait(() -> { SettingsDialog d = new SettingsDialog(app[0].describe); d.setLocation(40, 30); d.setVisible(true); });
+        settle(900);
+        for (Window win : Window.getWindows()) if (win instanceof SettingsDialog) ImageIO.write(snap(((SettingsDialog) win).getRootPane()), "png", new File(out, "12-settings.png"));
+        SwingUtilities.invokeAndWait(() -> Settings.set("accent", "Violet"));
+        settle(1200);
+        ImageIO.write(snap(f.getRootPane()), "png", new File(out, "13-violet.png"));
+        final boolean[] skin = new boolean[1];
+        SwingUtilities.invokeAndWait(() -> skin[0] = Skin.accent().getRGB() == new Color(0xA78BFA).getRGB());
+        SwingUtilities.invokeAndWait(() -> Settings.set("accent", "Cyan"));
+        System.out.println("accent changed: " + skin[0]);
+        System.exit(open[0] && !open[1] && mapOk[0] && skin[0] ? 0 : 2);
     }
 }

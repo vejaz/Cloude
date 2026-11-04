@@ -5,12 +5,30 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-140035.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-171036.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
 
-## Latest update (chains, editable rows, clearer pictures)
+## Latest update (maps, 3D pictures, settings)
+
+- **See map.** Every place that is found has a "See map" button next to its coordinates. It opens a window with the place drawn
+  around the coordinates in 3D, with a pin on the spot and a pin for every biome and structure you described, found near it, joined
+  by lines where one was described next to another. A check list says whether everything you described is really there and how far
+  each thing is. Views: 3D (turn, zoom, move), Stand there (walk around as a player, W A S D, F to fly), Top-down map (pan, zoom,
+  coordinate grid, scale bar). Options on the right: time of day, how far you can see, field of view, detail, and what to show.
+  Double-click anywhere to stand there. "Save picture" saves a PNG. "Copy coordinates" / "Copy /tp" show a message.
+- **What is real in the map, and what is not.** The biome of every place and the positions of villages are real, from your biome map
+  (one sample every 64 blocks). Everything finer - the exact hills, where each tree stands, the shape of a house - is generated to look
+  right. It is a faithful picture of the place, not a copy of the blocks in your game; the window says so.
+- **3D pictures in the book.** Every biome and structure is a small 3D scene with its own animal or buildings. Click one to open it as a
+  live 3D scene: drag to turn, wheel to zoom, W A S D to walk, Esc to close. They are drawn the first time the tab opens (a minute in the
+  background) and kept in %APPDATA%\SlateFinder\previews3d-v3, so they appear instantly after that.
+- **Settings** (the gear in the book): accent colour, picture size, the player name used in /tp, and the map's defaults.
+- Distances are now circles, not squares: "within 300 blocks" no longer reaches 450 blocks diagonally.
+
+## Earlier update (chains, editable rows, clearer pictures)
+
 
 - **Chains.** Things can be described relative to each other, not just to one spot, for example:
   "there's a desert village and next to the village is a desert and the savanna is touching a plains biome and the plains biome is
@@ -79,5 +97,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (772 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (1,000 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

@@ -54,12 +54,13 @@ public final class ReaderTest {
             boolean any = false, inner = false;
             for (int dz = -rmax; dz <= rmax && !(any && rmin == 0); dz++) {
                 for (int dx = -rmax; dx <= rmax; dx++) {
+                    if (!PlaceSearch.inKernel(dx, dz, rmax)) continue;
                     int xx = x + dx, zz = z + dz;
                     if (xx < 0 || zz < 0 || xx >= g.cols() || zz >= g.cols()) continue;
                     boolean ok = ch.role == Reader.Role.ABSENT ? isType(g, ch, xx, zz) : holds(g, ch, xx, zz, kids, c0, c1);
                     if (!ok) continue;
                     any = true;
-                    if (rmin > 0 && Math.abs(dx) <= rmin && Math.abs(dz) <= rmin) inner = true;
+                    if (rmin > 0 && PlaceSearch.inKernel(dx, dz, rmin)) inner = true;
                 }
             }
             if (ch.role == Reader.Role.ABSENT) { if (any) return false; }
@@ -69,7 +70,7 @@ public final class ReaderTest {
                     // a ring: something qualifying within the outer distance but none within the inner one
                     boolean ring = false;
                     for (int dz = -rmax; dz <= rmax && !ring; dz++) for (int dx = -rmax; dx <= rmax && !ring; dx++) {
-                        if (Math.abs(dx) <= rmin && Math.abs(dz) <= rmin) continue;
+                        if (!PlaceSearch.inKernel(dx, dz, rmax) || PlaceSearch.inKernel(dx, dz, rmin)) continue;
                         int xx = x + dx, zz = z + dz;
                         if (xx < 0 || zz < 0 || xx >= g.cols() || zz >= g.cols()) continue;
                         if (holds(g, ch, xx, zz, kids, c0, c1)) ring = true;
