@@ -106,6 +106,17 @@ public final class ReaderTest {
         r = Reader.read("desert village", grid);
         check(r.target() != null && (r.target().structures.contains("desert_village") || (r.target().biomes.size() == 1 && r.target().biomes.contains("desert"))), "desert village is searched as desert villages only");
 
+        // --- a long, messy description: numbers that come before their name, a name said twice, "within"
+        r = Reader.read("village, meadow biome, pale garden biome, next to the village is a dark forest biome, about  400 blocks there is  a grove and about 200 blocks there is a bamboo jungle, forest within 600 blocks, pale garden", null);
+        System.out.println(describe(r));
+        check(r.target() != null && r.target().label().equals("Meadow"), "long description: meadow is the spot");
+        String[][] want = {{"Village", "100"}, {"Pale Garden", "300"}, {"Dark Forest", "100"}, {"Grove", "400"}, {"Bamboo Jungle", "200"}, {"Forest", "600"}};
+        for (String[] w : want) { Reader.Claim wc = find(r, w[0]); check(wc != null && wc.within == Integer.parseInt(w[1]), "long description: " + w[0] + " within " + w[1] + ", got " + (wc == null ? "none" : wc.within)); }
+        check(r.claims.size() == 7, "long description: seven distinct things, got " + r.claims.size());
+        boolean complained = false;
+        for (Reader.Issue i : r.issues) if (i.text.contains("within")) complained = true;
+        check(!complained, "'within' is not reported as an unknown word");
+
         // --- numbers
         r = Reader.read("forest with a taiga within 1.5k blocks and ocean 800 blocks away", grid);
         System.out.println(describe(r));

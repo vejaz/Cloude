@@ -22,6 +22,8 @@ public final class Reader {
         public final String said;
         public Role role;
         public int within;
+        /** True if a number or a phrase like "next to" gave the distance, rather than the default. */
+        public boolean explicit;
         /** Biome ids to match (including habitat biomes standing in for a structure). */
         public final List<String> biomes = new ArrayList<>();
         /** Structure kinds that have a position list built. */
@@ -71,7 +73,7 @@ public final class Reader {
         "think know say said tell told get got give go going come coming take took make made use using used " +
         "one two three four five six seven eight nine ten first second third another other others same different " +
         "blocks block meters meter metres metre chunks chunk m km k " +
-        "if when while although though because since until during after before once already yet now today " +
+        "if when while although though because since until during after before once already yet now today within " +
         "up down off yes yeah ok okay please thanks thank hi hello hey " +
         "world map minecraft game server screenshot picture image photo taken live lives living base house home " +
         "can t s d ll ve re");
@@ -252,6 +254,7 @@ public final class Reader {
 
         // 2. who is negated, how far, and which one is "the spot"
         Claim prev = null;
+        int[] numOwner = numberOwners(toks, found);
         boolean[] numUsed = new boolean[m];
         List<Claim> kept = new ArrayList<>();
         for (int k = 0; k < found.size(); k++) {
@@ -287,17 +290,27 @@ public final class Reader {
                 if ((a.equals("far") || a.equals("away")) && b.equals("from")) farFrom = true;
             }
             c.role = (negated || farFrom) ? Role.ABSENT : Role.NEAR;
-            c.within = distance(toks, c, found, k, from, farFrom, numUsed);
+            c.within = distance(toks, c, found, k, from, farFrom, numOwner, c);
+            // "next to the village is a dark forest": the second name is as close as the first was said to be
+            if (!c.explicit && prev != null && prev.explicit && prev.role == Role.NEAR && c.role == Role.NEAR && copulaBetween(toks, prev.end, c.start)) {
+                c.within = prev.within;
+                c.explicit = true;
+            }
             if (marked(toks, wFrom, c.start) && c.role != Role.ABSENT) c.role = Role.TARGET;
             kept.add(c);
             prev = c;
         }
 
         // drop repeats of the same thing with the same role
-        Set<String> seen = new HashSet<>();
+        Map<String, Claim> seen = new LinkedHashMap<>();
         for (Claim c : kept) {
-            if (seen.add(c.ref.label + "/" + c.role)) out.claims.add(c);
+            String key = c.ref.label + "/" + (c.role == Role.TARGET ? "TARGET" : c.role == Role.ABSENT ? "ABSENT" : "NEAR");
+            Claim old = seen.get(key);
+            if (old == null) { seen.put(key, c); continue; }
+            if (c.role == Role.TARGET) old.role = Role.TARGET;
+            if (c.explicit && (!old.explicit || c.within < old.within)) { old.within = c.within; old.explicit = true; }
         }
+        out.claims.addAll(seen.values());
 
         // 3. choose the target: the one marked, else the first biome mentioned, else the first thing
         int marked = 0;
@@ -455,6 +468,16 @@ public final class Reader {
         return last;
     }
 
+    private static boolean copulaBetween(List<Tok> toks, int from, int to) {
+        boolean copula = false;
+        for (int q = from; q < to; q++) {
+            String w = toks.get(q).raw;
+            if (w.equals("is") || w.equals("are") || w.equals("theres") || w.equals("sits") || w.equals("stands")) copula = true;
+            else if (!(w.equals("there") || w.equals("a") || w.equals("an") || w.equals("the") || w.equals("also"))) return false;
+        }
+        return copula;
+    }
+
     private static boolean marked(List<Tok> toks, int from, int to) {
         for (int q = from; q < to; q++) {
             for (String[] mk : MARKERS) {
@@ -467,7 +490,7 @@ public final class Reader {
     }
 
     /** How far away the thing is said to be, from numbers and phrases around its name. */
-    private static int distance(List<Tok> toks, Claim c, List<Claim> all, int idx, int from, boolean farFrom, boolean[] numUsed) {
+    private static int distance(List<Tok> toks, Claim c, List<Claim> all, int idx, int from, boolean farFrom, int[] numOwner, Claim self) {
         int def = farFrom ? 800 : 300;
         int aEnd = c.end;
         int limit = Math.min(toks.size(), c.end + 5);
@@ -478,17 +501,13 @@ public final class Reader {
         }
         int lo = Math.max(from, c.start - 8);
         int best = -1;
-        // an explicit number wins ("within 500 blocks", "800 blocks away"). One that comes after the name is
-        // about that name; one before it counts only if the previous name has not already used it.
-        for (int pass = 0; pass < 2; pass++) {
-            int a = pass == 0 ? c.end : lo, b = pass == 0 ? limit : c.start;
-            for (int q = a; q < b; q++) {
-                Tok t = toks.get(q);
-                if (!isNumber(t.raw) || numUsed[q]) continue;
-                long v = Long.parseLong(t.raw.length() > 9 ? "999999999" : t.raw);
-                boolean unit = q + 1 < toks.size() && (toks.get(q + 1).raw.startsWith("block") || toks.get(q + 1).raw.equals("m") || toks.get(q + 1).raw.startsWith("meter") || toks.get(q + 1).raw.startsWith("metre"));
-                if ((unit && v > 0) || v >= 20) { numUsed[q] = true; return (int) Math.min(v, 400000); }
-            }
+        // an explicit number wins ("within 500 blocks", "800 blocks away"), whichever name it belongs to
+        for (int q = 0; q < toks.size(); q++) {
+            if (numOwner[q] != idx) continue;
+            Tok t = toks.get(q);
+            long v = Long.parseLong(t.raw.length() > 9 ? "999999999" : t.raw);
+            self.explicit = true;
+            return (int) Math.min(v, 400000);
         }
         for (int q = lo; q < limit; q++) {
             if (q >= c.start && q < c.end) continue;
@@ -501,7 +520,42 @@ public final class Reader {
             else if (w.equals("near") || w.equals("nearby") || w.equals("close") || w.equals("closeby") || w.equals("around")) d = 300;
             if (d > best) best = d;
         }
+        if (best > 0) self.explicit = true;
         return best > 0 ? best : def;
+    }
+
+    /**
+     * Which name each distance number belongs to. A number that opens a clause ("..., about 400 blocks there is a
+     * grove") belongs to the name that follows it; one that trails a name ("ocean 800 blocks away") belongs to that name.
+     */
+    private static int[] numberOwners(List<Tok> toks, List<Claim> found) {
+        int m = toks.size();
+        int[] owner = new int[m];
+        Arrays.fill(owner, -1);
+        Set<String> quals = set("about", "around", "roughly", "approximately", "approx", "within", "like", "at", "maybe", "some", "over", "up", "to");
+        for (int q = 0; q < m; q++) {
+            Tok t = toks.get(q);
+            if (!isNumber(t.raw)) continue;
+            long v = t.raw.length() > 9 ? 999999999L : Long.parseLong(t.raw);
+            boolean unit = q + 1 < m && (toks.get(q + 1).raw.startsWith("block") || toks.get(q + 1).raw.equals("m") || toks.get(q + 1).raw.startsWith("meter") || toks.get(q + 1).raw.startsWith("metre"));
+            if (!((unit && v > 0) || v >= 20)) continue;
+            int prevIdx = -1, nextIdx = -1;
+            for (int k = 0; k < found.size(); k++) {
+                if (found.get(k).end <= q) prevIdx = k;
+                if (found.get(k).start > q && nextIdx < 0) nextIdx = k;
+            }
+            int b = q - 1;
+            while (b >= 0 && quals.contains(toks.get(b).raw)) b--;
+            boolean opensClause = b < 0 || toks.get(b).punct || toks.get(b).raw.equals("and") || toks.get(b).raw.equals("but") || toks.get(b).raw.equals("then") || toks.get(b).raw.equals("also");
+            boolean nextClose = nextIdx >= 0 && found.get(nextIdx).start - q <= 7 && lastHardBreak(toks, q, found.get(nextIdx).start) < 0;
+            boolean prevClose = prevIdx >= 0 && q - found.get(prevIdx).end <= 4;
+            if (opensClause && nextClose) owner[q] = nextIdx;
+            else if (prevClose) owner[q] = prevIdx;
+            else if (nextClose) owner[q] = nextIdx;
+            else if (prevIdx >= 0) owner[q] = prevIdx;
+            else if (nextIdx >= 0) owner[q] = nextIdx;
+        }
+        return owner;
     }
 
     private static void resolve(Claim c, BiomeGrid grid, List<Issue> issues) {

@@ -5,7 +5,7 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-125438.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-130947.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
@@ -58,5 +58,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (679 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (688 checks), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.
