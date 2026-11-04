@@ -100,9 +100,24 @@ final class Caster {
         double tWater = -1;
         Terrain.Chunk ch = null;
         int lcx = Integer.MIN_VALUE, lcz = Integer.MIN_VALUE;
+        int ceilY = 0;
         while (true) {
             int ccx = cx >> 4, ccz = cz >> 4;
-            if (ch == null || ccx != lcx || ccz != lcz) { ch = world.chunk(ccx, ccz); lcx = ccx; lcz = ccz; }
+            if (ch == null || ccx != lcx || ccz != lcz) { ch = world.chunk(ccx, ccz); lcx = ccx; lcz = ccz; ceilY = Math.max(ch.maxH(), Terrain.SEA) + 1; }
+            // above everything in this chunk, and still above it where the ray leaves it: cross the chunk without looking at a column
+            if (oy + dy * t > ceilY) {
+                double bx = dx > 0 ? ((ccx + 1) * 16 - ox) / dx : dx < 0 ? (ccx * 16 - ox) / dx : 1e30;
+                double bz = dz > 0 ? ((ccz + 1) * 16 - oz) / dz : dz < 0 ? (ccz * 16 - oz) / dz : 1e30;
+                double tc = Math.min(Math.min(bx, bz), maxD + 1);
+                if (oy + dy * tc > ceilY) {
+                    do {
+                        if (tmx < tmz) { t = tmx; tmx += tdx; cx += sx; axis = 0; } else { t = tmz; tmz += tdz; cz += sz; axis = 1; }
+                    } while ((cx >> 4) == ccx && (cz >> 4) == ccz);
+                    if (t > maxD) { hit[6] = tWater; hit[9] = inWater ? hit[9] : 0; return false; }
+                    if (dy > 0 && oy + dy * t > topLimit) { hit[6] = tWater; return false; }
+                    continue;
+                }
+            }
             int idx = ((cz & 15) << 4) | (cx & 15);
             double tExit = Math.min(tmx, tmz);
             double yEntry = oy + dy * t, yExit = oy + dy * tExit;
@@ -230,7 +245,10 @@ final class Caster {
     // ------------------------------------------------------------------ 3D
 
     /** Renders a view. {@code step} is the size of the blocks of pixels the picture is drawn in (4 for a quick look, 1 for the real thing). */
-    void render3D(int[] out, int w, int h, int step, Cam cam, Opts o, boolean detail) {
+    void render3D(int[] out, int w, int h, int step, Cam cam, Opts o, boolean detail) { render3D(out, w, h, step, cam, o, detail, null); }
+
+    /** As above, but gives up as soon as {@code stale} says the picture is no longer wanted (the person moved again). */
+    void render3D(int[] out, int w, int h, int step, Cam cam, Opts o, boolean detail, java.util.function.BooleanSupplier stale) {
         double el = Math.toRadians(o.sunElev), az = Math.toRadians(o.sunAz);
         final double sx = Math.cos(el) * Math.sin(az), sy = Math.sin(el), sz = Math.cos(el) * Math.cos(az);
         final double fx = cam.fx(), fy = cam.fy(), fz = cam.fz();
@@ -241,6 +259,7 @@ final class Caster {
         final int rows = (h + step - 1) / step, cols = (w + step - 1) / step;
         final double topLimit = 330;
         IntStream.range(0, rows).parallel().forEach(r -> {
+            if (stale != null && stale.getAsBoolean()) return;
             double[] hit = new double[16];
             int py = r * step;
             double v = (1 - (py + step * 0.5) / h * 2) * th;
@@ -295,10 +314,13 @@ final class Caster {
     // ------------------------------------------------------------------ the flat map
 
     /** Draws the map from above. {@code bpp} is blocks per pixel; below about 1.6 the real columns are drawn, beyond that a quick biome relief. */
-    void renderMap(int[] out, int w, int h, double cx, double cz, double bpp, Opts o, boolean contours) {
+    void renderMap(int[] out, int w, int h, double cx, double cz, double bpp, Opts o, boolean contours) { renderMap(out, w, h, cx, cz, bpp, o, contours, null); }
+
+    void renderMap(int[] out, int w, int h, double cx, double cz, double bpp, Opts o, boolean contours, java.util.function.BooleanSupplier stale) {
         final boolean close = bpp <= 1.6;
         double el = Math.toRadians(o.sunElev), az = Math.toRadians(o.sunAz);
         IntStream.range(0, h).parallel().forEach(py -> {
+            if (stale != null && stale.getAsBoolean()) return;
             for (int px = 0; px < w; px++) {
                 double wx = cx + (px - w / 2.0) * bpp, wz = cz + (py - h / 2.0) * bpp;
                 out[py * w + px] = close ? closeColour(wx, wz, bpp, o) : farColour(wx, wz, bpp, o);

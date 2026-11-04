@@ -5,7 +5,7 @@ Only the **Describing finder** tab changed. The Underground and Surface tabs are
 
 ## Install (nothing of yours is overwritten)
 
-1. Copy `SlateFinder-20261104-212213.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
+1. Copy `SlateFinder-20261104-215035.jar` into `C:\Users\Namai\Sites\slate-finder\builds\`.
 2. Start Slate Finder as usual. `SlateFinder.vbs` runs whichever jar in `builds\` is newest, which is this one.
 
 To go back, delete that one jar. Your older builds are untouched.
@@ -28,6 +28,11 @@ To go back, delete that one jar. Your older builds are untouched.
   - It is the **natural world only**: what players built on a server is not in the seed. The seed and version must match the
     world you are looking at.
   - Past the edge of the exact area the picture is still the generated one, and the window says so.
+- **Faster 3D.** A full-resolution picture of the map now takes about a quarter of the time (2.4 s to 0.5 s on a 4-core test machine,
+  with byte-identical pixels): empty sky and empty space above the terrain are crossed a whole chunk at a time, and chunk lookups no
+  longer allocate. A picture that is no longer wanted (you zoomed or turned again) is dropped at once instead of being finished first.
+- **Test coordinates window fixed.** Closing it with the X used to only hide it, so pressing the button again did nothing. It now
+  opens every time (checked by `ReverseReopenTest`, which fails without the fix).
 - **Storage you control.** Settings > Storage for the maps shows `used of limit` (default 10 GB) with a bar and a breakdown, lets
   you change the limit (1 to 200 GB), **Delete the memory of the maps** (saved places and the 3D pictures of the book), remove
   the downloaded server, and open the folder. When the limit is reached the places you looked at longest ago are deleted first.
@@ -133,5 +138,5 @@ To go back, delete that one jar. Your older builds are untouched.
 ./build-patch.sh path/to/SlateFinder-<old>.jar
 ```
 
-`test/` holds `ReaderTest` (1,056 checks), `World3DTest` (227), `ExactTest` (66: reads a made-up world written in the game's file format, and runs a stand-in for the game's server), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
+`test/` holds `ReaderTest` (1,056 checks), `World3DTest` (227), `ReverseReopenTest` (15), `ExactTest` (66: reads a made-up world written in the game's file format, and runs a stand-in for the game's server), `FullScale` (a 225,000-block map: about 1.5 s per search, under 300 MB),
 `PreviewSheet`, and `PanelShot`/`TabCompare` (render the real window headlessly). They refuse to write outside the temp folder.

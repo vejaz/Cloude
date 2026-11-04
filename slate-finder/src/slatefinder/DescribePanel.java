@@ -406,7 +406,7 @@ public final class DescribePanel extends JPanel {
 
     /** The "Test coordinates" window. */
     ReverseDialog openReverse() {
-        if (reverseDlg != null && reverseDlg.isDisplayable()) { reverseDlg.toFront(); return reverseDlg; }
+        if (reverseDlg != null && reverseDlg.isDisplayable()) { reverseDlg.setVisible(true); reverseDlg.toFront(); return reverseDlg; }
         reverseDlg = new ReverseDialog(this, grid, this::radius, s -> text.setText(s));
         reverseDlg.setVisible(true);
         return reverseDlg;

@@ -121,6 +121,7 @@ final class ReverseDialog extends JDialog {
         DescribePanel.slim(sp.getVerticalScrollBar(), 8);
         sp.getVerticalScrollBar().setUnitIncrement(18);
         setContentPane(sp);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setSize(500, 700);
         setLocationRelativeTo(parent);
         getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ESCAPE, 0), "close");
@@ -150,6 +151,9 @@ final class ReverseDialog extends JDialog {
         }
     }
 
+    String resultText() { return out.getText(); }
+    boolean isRunning() { return running; }
+
     /** Starts the search for the coordinates in the boxes. */
     void start() { run(); }
 
@@ -174,9 +178,9 @@ final class ReverseDialog extends JDialog {
             Reverse.Report rep;
             try {
                 rep = Reverse.describe(grid, x, z, radius.getAsInt(), () -> cancelled, s -> SwingUtilities.invokeLater(() -> status.setText(s.length() > 90 ? s.substring(0, 88) + "…" : s)));
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
                 rep = new Reverse.Report();
-                rep.note = "Something went wrong: " + e.getMessage();
+                rep.note = "Something went wrong: " + e;
             }
             final Reverse.Report r = rep;
             SwingUtilities.invokeLater(() -> show(r, x, z));

@@ -386,6 +386,7 @@ final class ExactPlace implements Terrain.ExactSource {
             Col[] ch = cols[ci];
             if (ch == null) continue;
             Terrain.Chunk t = new Terrain.Chunk();
+            t.cx = cx0 + ci % cw; t.cz = cz0 + ci / cw;
             for (int k = 0; k < 256; k++) {
                 Col c = ch[k];
                 t.ter[k] = c.ter;

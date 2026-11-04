@@ -282,10 +282,10 @@ final class WorldView extends JComponent {
                     if (mode == Mode.MAP) {
                         int rw = Math.max(1, (w + s - 1) / s), rh = Math.max(1, (h + s - 1) / s);
                         int[] small = new int[rw * rh];
-                        caster.renderMap(small, rw, rh, mx, mz, bpp * s, opts, false);
+                        caster.renderMap(small, rw, rh, mx, mz, bpp * s, opts, false, () -> ver != version.get());
                         for (int y = 0; y < h; y++) { int sy = Math.min(rh - 1, y / s); for (int x = 0; x < w; x++) pix[y * w + x] = small[sy * rw + Math.min(rw - 1, x / s)]; }
                     } else {
-                        caster.render3D(pix, w, h, s, cam(), opts, s == 1);
+                        caster.render3D(pix, w, h, s, cam(), opts, s == 1, () -> ver != version.get());
                     }
                 } catch (RuntimeException ex) { break; }
                 if (ver != version.get()) break;

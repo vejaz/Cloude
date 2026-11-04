@@ -252,24 +252,51 @@ final class Terrain {
         final short[] ter = new short[256], h = new short[256], gy = new short[256];
         final int[] stamp = new int[256];
         final byte[] top = new byte[256], sub = new byte[256], under = new byte[256], faceTop = new byte[256], biome = new byte[256], sx = new byte[256], sz = new byte[256], flags = new byte[256];
+        /** Where this chunk sits (set when it is stored, so a lookup can check it got the right one). */
+        int cx = Integer.MIN_VALUE, cz = Integer.MIN_VALUE;
+        private int maxH = Integer.MIN_VALUE;
+
+        /** The highest top of any column: a ray above this, all the way across the chunk, cannot hit anything in it. */
+        int maxH() {
+            int m = maxH;
+            if (m == Integer.MIN_VALUE) {
+                m = -1000;
+                for (int i = 0; i < 256; i++) if (h[i] > m) m = h[i];
+                maxH = m;
+            }
+            return m;
+        }
     }
+
+    /** A small direct-mapped cache in front of the chunk table: the renderer asks for chunks millions of times a frame. */
+    private final Chunk[] fast = new Chunk[8192];
 
     static final int F_WATER = 1, F_ICE = 2;
 
     Chunk chunk(int cx, int cz) {
+        int slot = ((cx * 73856093) ^ (cz * 19349663)) & 8191;
+        Chunk f = fast[slot];
+        if (f != null && f.cx == cx && f.cz == cz) return f;
+        Chunk got = slowChunk(cx, cz);
+        fast[slot] = got;
+        return got;
+    }
+
+    private Chunk slowChunk(int cx, int cz) {
         long key = ((long) cx << 32) ^ (cz & 0xFFFFFFFFL);
         Chunk c = chunks.get(key);
         if (c == null) {
             ExactSource ex = exact;
             if (ex != null) c = ex.chunk(cx, cz);
             if (c == null) c = generate(cx, cz);
-            if (chunks.size() > 30000) chunks.clear();
+            c.cx = cx; c.cz = cz;
+            if (chunks.size() > 30000) { chunks.clear(); java.util.Arrays.fill(fast, null); }
             chunks.put(key, c);
         }
         return c;
     }
 
-    void clear() { chunks.clear(); layouts.clear(); }
+    void clear() { chunks.clear(); layouts.clear(); java.util.Arrays.fill(fast, null); }
 
     int biomeIndexAt(int x, int z) {
         int b = src.at(warpX(x, z), warpZ(x, z));
