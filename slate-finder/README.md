@@ -12,19 +12,21 @@ To go back, delete that one jar. Your older builds are untouched.
 
 ## Latest update (chains, editable rows, clearer pictures)
 
-- **Chains.** Things can be described relative to each other, not just to one spot:
-  .
-   starts a new plains,  is the latest one named, and  after  is the same village.
-   means the next map cell,  about 100 blocks,  about 300,  exactly that. Something that is not tied to
-  anything in a story-style sentence is assumed to touch the thing named just before it, and it says so. The search follows the chain exactly
-  (checked against a slow brute-force version).
-- **The spot is the first thing you name** (the village in your examples), or whatever follows "searching for", "find", "looking for"...
-  Results are that thing's coordinates; with a village list they are the village's exact position.
-- **Rows under the text box are editable.** Click a distance, delete the number, type a new one (, , ), Enter.
+- **Chains.** Things can be described relative to each other, not just to one spot, for example:
+  "there's a desert village and next to the village is a desert and the savanna is touching a plains biome and the plains biome is
+  touching a jungle biome and in the jungle there's a jungle temple and at the desert village there's a cherry blossom biome and
+  touching the cherry blossom biome is a plains biome and touching the plains biome is a warm ocean".
+  "a plains biome" starts a new plains, "the plains biome" is the latest one named, and "the village" after "desert village" is the
+  same village. "touching" means the next map cell, "next to" about 100 blocks, "close to" about 300, "within 50 of" exactly that.
+  Something that is not tied to anything in a story-style sentence is assumed to touch the thing named just before it, and the tab
+  says so. The search follows the chain exactly (checked against a slow brute-force version).
+- **The spot is the first thing you name** (the village in your examples), or whatever follows "searching for", "find",
+  "looking for"... Results are that thing's coordinates; with a village list they are the village's exact position.
+- **Rows under the text box are editable.** Click a distance, delete the number, type a new one (500, 1.5k or 400-800), press Enter.
   Press "make this the spot" on any row to get the coordinates of that biome or structure instead. "undo my changes" puts it back.
-- **Pictures you can tell apart.** Every biome has its own animal or prop (panda, camel, goat, creaking, warden, axolotl, dolphin...) and every
-  picture has a corner badge showing the block it is known by. The badge colour is the colour dot in the rows.
-- **API key fields keep the key.** The saved key shows as dots and stays when you click the field; Show reveals it.
+- **Pictures you can tell apart.** Every biome has its own animal or prop (panda, camel, goat, creaking, warden, axolotl, dolphin...)
+  and every picture has a corner badge showing the block it is known by. The badge colour is the colour dot in the rows.
+- **API key fields keep the key.** The saved key shows as dots and stays when you click the field; "Show" reveals it.
 
 ## Earlier update
 
